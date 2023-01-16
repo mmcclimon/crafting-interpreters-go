@@ -1,13 +1,17 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/mmcclimon/glox/lox"
 )
 
 func main() {
-	fmt.Println("lox, here we are")
+	chunk := lox.NewChunk()
 
-	lox.Lox()
+	constant := chunk.AddConstant(1.2)
+	chunk.Write(byte(lox.OP_CONSTANT), 123)
+	chunk.Write(byte(constant), 123)
+
+	chunk.Write(byte(lox.OP_RETURN), 123)
+
+	chunk.Disassemble("test chunk")
 }

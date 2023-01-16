@@ -1,3 +1,1 @@
 package lox
-
-func Lox() {}
