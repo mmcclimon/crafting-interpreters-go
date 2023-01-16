@@ -1,0 +1,3 @@
+package lox
+
+func Lox() {}
