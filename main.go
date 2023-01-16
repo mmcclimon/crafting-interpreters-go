@@ -10,8 +10,9 @@ func main() {
 	constant := chunk.AddConstant(1.2)
 	chunk.Write(byte(lox.OP_CONSTANT), 123)
 	chunk.Write(byte(constant), 123)
-
 	chunk.Write(byte(lox.OP_RETURN), 123)
-
 	chunk.Disassemble("test chunk")
+
+	vm := lox.NewVM()
+	vm.Interpret(chunk)
 }

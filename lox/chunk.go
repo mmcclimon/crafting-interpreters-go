@@ -27,6 +27,6 @@ func (c *Chunk) AddConstant(item Value) int {
 	return len(*c.constants) - 1
 }
 
-func (c *Chunk) ConstantAt(offset byte) Value {
+func (c *Chunk) constantAt(offset byte) Value {
 	return (*c.constants)[offset]
 }

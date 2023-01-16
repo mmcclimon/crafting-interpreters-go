@@ -2,6 +2,8 @@ package lox
 
 import "fmt"
 
+var DEBUG_TRACE_EXECUTION = false
+
 func (c *Chunk) Disassemble(name string) {
 	fmt.Printf("== %s ==\n", name)
 
@@ -40,7 +42,7 @@ func simpleInstruction(name string, offset int) int {
 func constantInstruction(name string, chunk *Chunk, offset int) int {
 	constant := chunk.code[offset+1]
 	fmt.Printf("%-16s %4d '", name, constant)
-	chunk.ConstantAt(constant).Print() // could be improved, probably
+	chunk.constantAt(constant).Print() // could be improved, probably
 	fmt.Printf("'\n")
 
 	return offset + 2
