@@ -2,7 +2,7 @@ package lox
 
 import "fmt"
 
-var DEBUG_TRACE_EXECUTION = false
+var DEBUG_TRACE_EXECUTION = true
 
 func (c *Chunk) Disassemble(name string) {
 	fmt.Printf("== %s ==\n", name)
@@ -23,11 +23,22 @@ func (c *Chunk) DisassembleInstruction(offset int) int {
 
 	instruction := c.code[offset]
 
-	switch instruction {
-	case byte(OP_CONSTANT):
+	switch OpCode(instruction) {
+	case OP_CONSTANT:
 		return constantInstruction("OP_CONSTANT", c, offset)
-	case byte(OP_RETURN):
+	case OP_ADD:
+		return simpleInstruction("OP_ADD", offset)
+	case OP_SUBTRACT:
+		return simpleInstruction("OP_SUBTRACT", offset)
+	case OP_MULTIPLY:
+		return simpleInstruction("OP_MULTIPLY", offset)
+	case OP_DIVIDE:
+		return simpleInstruction("OP_DIVIDE", offset)
+	case OP_NEGATE:
+		return simpleInstruction("OP_NEGATE", offset)
+	case OP_RETURN:
 		return simpleInstruction("OP_RETURN", offset)
+
 	default:
 		fmt.Printf("unknown opcode %d\n", instruction)
 		return offset + 1
