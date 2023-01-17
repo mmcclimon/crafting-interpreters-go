@@ -1,32 +1,57 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
+	"log"
+	"os"
+
 	"github.com/mmcclimon/glox/lox"
 )
 
 func main() {
-	chunk := lox.NewChunk()
+	if len(os.Args) == 1 {
+		repl()
+	} else if len(os.Args) == 2 {
+		runFile(os.Args[1])
+	} else {
+		fmt.Fprintln(os.Stderr, "usage: lox [path]")
+		os.Exit(64)
+	}
+}
 
-	constant := chunk.AddConstant(1.2)
-	chunk.Write(byte(lox.OP_CONSTANT), 123)
-	chunk.Write(byte(constant), 123)
+func repl() {
+	vm := lox.NewVM()
 
-	constant = chunk.AddConstant(3.4)
-	chunk.Write(byte(lox.OP_CONSTANT), 123)
-	chunk.Write(byte(constant), 123)
+	scanner := bufio.NewScanner(os.Stdin)
 
-	chunk.Write(byte(lox.OP_ADD), 123)
+	fmt.Print("> ")
+	for scanner.Scan() {
+		line := scanner.Text()
+		vm.InterpretString(line)
 
-	constant = chunk.AddConstant(5.6)
-	chunk.Write(byte(lox.OP_CONSTANT), 124)
-	chunk.Write(byte(constant), 124)
+		fmt.Print("> ")
+	}
 
-	chunk.Write(byte(lox.OP_DIVIDE), 124)
-	chunk.Write(byte(lox.OP_NEGATE), 124)
+	if err := scanner.Err(); err != nil {
+		log.Println(err)
+	}
+}
 
-	chunk.Write(byte(lox.OP_RETURN), 124)
-	// chunk.Disassemble("test chunk")
+func runFile(filename string) {
+	bytes, err := os.ReadFile(filename)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error reading file: %s\n", err)
+		os.Exit(74)
+	}
 
 	vm := lox.NewVM()
-	vm.Interpret(chunk)
+	err = vm.InterpretString(string(bytes))
+
+	if err == lox.InterpretCompileError {
+		os.Exit(65)
+	} else if err == lox.InterpretRuntimeError {
+		os.Exit(70)
+	}
 }

@@ -23,6 +23,12 @@ func NewVM() *VM {
 	return &VM{}
 }
 
+func (vm *VM) InterpretString(source string) error {
+	fmt.Println(source)
+	Compile(source)
+	return nil
+}
+
 func (vm *VM) Interpret(chunk *Chunk) error {
 	vm.chunk = chunk
 	vm.ip = 0
