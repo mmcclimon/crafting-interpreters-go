@@ -18,13 +18,13 @@ func main() {
 	chunk.Write(byte(lox.OP_ADD), 123)
 
 	constant = chunk.AddConstant(5.6)
-	chunk.Write(byte(lox.OP_CONSTANT), 123)
-	chunk.Write(byte(constant), 123)
+	chunk.Write(byte(lox.OP_CONSTANT), 124)
+	chunk.Write(byte(constant), 124)
 
-	chunk.Write(byte(lox.OP_DIVIDE), 123)
-	chunk.Write(byte(lox.OP_NEGATE), 123)
+	chunk.Write(byte(lox.OP_DIVIDE), 124)
+	chunk.Write(byte(lox.OP_NEGATE), 124)
 
-	chunk.Write(byte(lox.OP_RETURN), 123)
+	chunk.Write(byte(lox.OP_RETURN), 124)
 	// chunk.Disassemble("test chunk")
 
 	vm := lox.NewVM()

@@ -15,10 +15,11 @@ func (c *Chunk) Disassemble(name string) {
 func (c *Chunk) DisassembleInstruction(offset int) int {
 	fmt.Printf("%04d ", offset)
 
-	if offset > 0 && c.lines[offset] == c.lines[offset-1] {
+	lineNum := c.GetLine(offset)
+	if offset > 0 && lineNum == c.GetLine(offset-1) {
 		fmt.Printf("   | ")
 	} else {
-		fmt.Printf("%4d ", c.lines[offset])
+		fmt.Printf("%4d ", lineNum)
 	}
 
 	instruction := c.code[offset]
