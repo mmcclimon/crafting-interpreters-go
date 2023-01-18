@@ -24,9 +24,16 @@ func NewVM() *VM {
 }
 
 func (vm *VM) InterpretString(source string) error {
-	fmt.Println(source)
-	Compile(source)
-	return nil
+	chunk := NewChunk()
+
+	if !Compile(source, chunk) {
+		return InterpretCompileError
+	}
+
+	vm.chunk = chunk
+	vm.ip = 0
+
+	return vm.run()
 }
 
 func (vm *VM) Interpret(chunk *Chunk) error {
@@ -76,8 +83,6 @@ func (vm *VM) run() error {
 			return nil
 		}
 	}
-
-	return nil
 }
 
 func (vm *VM) readByte() byte {

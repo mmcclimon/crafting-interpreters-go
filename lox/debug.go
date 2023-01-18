@@ -2,7 +2,8 @@ package lox
 
 import "fmt"
 
-var DEBUG_TRACE_EXECUTION = true
+const DEBUG_TRACE_EXECUTION = false
+const DEBUG_PRINT_CODE = true
 
 func (c *Chunk) Disassemble(name string) {
 	fmt.Printf("== %s ==\n", name)
