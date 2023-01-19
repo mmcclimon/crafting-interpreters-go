@@ -24,13 +24,13 @@ func NewVM() *VM {
 }
 
 func (vm *VM) InterpretString(source string) error {
-	chunk := NewChunk()
+	compiler := NewCompiler(source)
 
-	if !Compile(source, chunk) {
+	if !compiler.Compile() {
 		return InterpretCompileError
 	}
 
-	vm.chunk = chunk
+	vm.chunk = compiler.chunk
 	vm.ip = 0
 
 	return vm.run()

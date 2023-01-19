@@ -4,37 +4,34 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"runtime/debug"
 	"strconv"
 )
 
 // types
 type Compiler struct {
 	chunk *Chunk
+	rules map[TokenType]ParseRule
+	Parser
 }
 
 type Parser struct {
+	scanner   *Scanner
 	current   Token
 	previous  Token
 	hadError  bool
 	panicMode bool
 }
 
+// This is nullary because it gets bound to the compiler instance on create,
+// so that we can call things as methods
+type parseFn func()
+type Precedence int
+
 type ParseRule struct {
-	prefix     ParseFn
-	infix      ParseFn
+	prefix     parseFn
+	infix      parseFn
 	precedence Precedence
 }
-
-type Precedence int
-type ParseFn func()
-
-// Variables
-var scanner *Scanner
-var parser *Parser
-var compiler *Compiler
-var compilingChunk *Chunk
-var rules map[TokenType]ParseRule
 
 const (
 	PREC_NONE       Precedence = iota
@@ -50,19 +47,43 @@ const (
 	PREC_PRIMARY
 )
 
-func init() {
-	rules = map[TokenType]ParseRule{
-		TOKEN_LEFT_PAREN:    {grouping, nil, PREC_NONE},
+func NewCompiler(source string) *Compiler {
+	c := &Compiler{
+		chunk: NewChunk(),
+		Parser: Parser{
+			scanner:   NewScanner(source),
+			hadError:  false,
+			panicMode: false,
+		},
+	}
+
+	c.initRules()
+
+	return c
+}
+
+func (c *Compiler) Compile() bool {
+	c.advance()
+	c.expression()
+	c.consume(TOKEN_EOF, "Expect end of expression")
+	c.end()
+
+	return !c.hadError
+}
+
+func (c *Compiler) initRules() {
+	c.rules = map[TokenType]ParseRule{
+		TOKEN_LEFT_PAREN:    {c.grouping, nil, PREC_NONE},
 		TOKEN_RIGHT_PAREN:   {nil, nil, PREC_NONE},
 		TOKEN_LEFT_BRACE:    {nil, nil, PREC_NONE},
 		TOKEN_RIGHT_BRACE:   {nil, nil, PREC_NONE},
 		TOKEN_COMMA:         {nil, nil, PREC_NONE},
 		TOKEN_DOT:           {nil, nil, PREC_NONE},
-		TOKEN_MINUS:         {unary, binary, PREC_TERM},
-		TOKEN_PLUS:          {nil, binary, PREC_TERM},
+		TOKEN_MINUS:         {c.unary, c.binary, PREC_TERM},
+		TOKEN_PLUS:          {nil, c.binary, PREC_TERM},
 		TOKEN_SEMICOLON:     {nil, nil, PREC_NONE},
-		TOKEN_SLASH:         {nil, binary, PREC_FACTOR},
-		TOKEN_STAR:          {nil, binary, PREC_FACTOR},
+		TOKEN_SLASH:         {nil, c.binary, PREC_FACTOR},
+		TOKEN_STAR:          {nil, c.binary, PREC_FACTOR},
 		TOKEN_BANG:          {nil, nil, PREC_NONE},
 		TOKEN_BANG_EQUAL:    {nil, nil, PREC_NONE},
 		TOKEN_EQUAL:         {nil, nil, PREC_NONE},
@@ -73,7 +94,7 @@ func init() {
 		TOKEN_LESS_EQUAL:    {nil, nil, PREC_NONE},
 		TOKEN_IDENTIFIER:    {nil, nil, PREC_NONE},
 		TOKEN_STRING:        {nil, nil, PREC_NONE},
-		TOKEN_NUMBER:        {number, nil, PREC_NONE},
+		TOKEN_NUMBER:        {c.number, nil, PREC_NONE},
 		TOKEN_AND:           {nil, nil, PREC_NONE},
 		TOKEN_CLASS:         {nil, nil, PREC_NONE},
 		TOKEN_ELSE:          {nil, nil, PREC_NONE},
@@ -95,160 +116,141 @@ func init() {
 	}
 }
 
-func Compile(source string, chunk *Chunk) bool {
-	compilingChunk = chunk
-
-	scanner = NewScanner(source)
-	parser = &Parser{
-		hadError:  false,
-		panicMode: false,
-	}
-
-	advance()
-
-	expression()
-	consume(TOKEN_EOF, "Expect end of expression")
-
-	endCompiler()
-
-	return !parser.hadError
+func (c *Compiler) expression() {
+	c.parsePrecedence(PREC_ASSIGNMENT)
 }
 
-func advance() {
-	parser.previous = parser.current
-
-	for {
-		parser.current = scanner.ScanToken()
-
-		if parser.current.kind != TOKEN_ERROR {
-			break
-		}
-
-		parser.errorAtCurrent(parser.current.lexeme)
-	}
-}
-
-func consume(tt TokenType, msg string) {
-	if parser.current.kind == tt {
-		advance()
-		return
-	}
-
-	parser.errorAtCurrent(msg)
-}
-
-func expression() {
-	parsePrecedence(PREC_ASSIGNMENT)
-}
-
-func number() {
-	value, err := strconv.ParseFloat(parser.previous.lexeme, 64)
+func (c *Compiler) number() {
+	n, err := strconv.ParseFloat(c.previous.lexeme, 64)
 	if err != nil {
 		panic("strconv.ParseFloat failed somehow")
 	}
 
-	emitConstant(Value(value))
+	c.emitConstant(Value(n))
 }
 
-func grouping() {
-	expression()
-	consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.")
+func (c *Compiler) grouping() {
+	c.expression()
+	c.consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.")
 }
 
-func unary() {
-	op := parser.previous.kind
-	parsePrecedence(PREC_UNARY)
+func (c *Compiler) unary() {
+	op := c.previous.kind
+	c.parsePrecedence(PREC_UNARY)
 
 	switch op {
 	case TOKEN_MINUS:
-		emitByte(byte(OP_NEGATE))
+		c.emitByte(byte(OP_NEGATE))
 	default:
 		panic("unreachable")
 	}
 }
 
-func binary() {
-	op := parser.previous.kind
-	rule := getRule(op)
-	parsePrecedence(rule.precedence + 1)
+func (c *Compiler) binary() {
+	op := c.previous.kind
+	rule := c.getRule(op)
+	c.parsePrecedence(rule.precedence + 1)
 
 	switch op {
 	case TOKEN_PLUS:
-		emitByte(byte(OP_ADD))
+		c.emitByte(byte(OP_ADD))
 	case TOKEN_MINUS:
-		emitByte(byte(OP_SUBTRACT))
+		c.emitByte(byte(OP_SUBTRACT))
 	case TOKEN_STAR:
-		emitByte(byte(OP_MULTIPLY))
+		c.emitByte(byte(OP_MULTIPLY))
 	case TOKEN_SLASH:
-		emitByte(byte(OP_DIVIDE))
+		c.emitByte(byte(OP_DIVIDE))
 	default:
 		panic("unreachable")
 	}
 }
 
-func getRule(op TokenType) ParseRule {
-	return rules[op]
+func (c *Compiler) getRule(op TokenType) ParseRule {
+	return c.rules[op]
 }
 
-func parsePrecedence(precedence Precedence) {
-	advance()
-	prefixRule := getRule(parser.previous.kind).prefix
+func (c *Compiler) parsePrecedence(precedence Precedence) {
+	c.advance()
+	prefixRule := c.getRule(c.previous.kind).prefix
 	if prefixRule == nil {
-		parser.error("Expect expression.")
+		c.error("Expect expression.")
 		return
 	}
 
 	prefixRule()
 
-	for precedence <= getRule(parser.current.kind).precedence {
-		advance()
-		infixRule := getRule(parser.previous.kind).infix
+	for precedence <= c.getRule(c.current.kind).precedence {
+		c.advance()
+		infixRule := c.getRule(c.previous.kind).infix
 		infixRule()
 	}
 }
 
-func emitByte(item byte) {
-	currentChunk().Write(item, parser.previous.line)
+// these functions all write to our chunk
+
+func (c *Compiler) emitByte(item byte) {
+	c.chunk.Write(item, c.previous.line)
 }
 
-func emitBytes(item1 byte, item2 byte) {
-	emitByte(item1)
-	emitByte(item2)
+func (c *Compiler) emitBytes(item1 byte, item2 byte) {
+	c.emitByte(item1)
+	c.emitByte(item2)
 }
 
-func emitConstant(value Value) {
-	emitBytes(byte(OP_CONSTANT), makeConstant(value))
+func (c *Compiler) emitConstant(value Value) {
+	c.emitBytes(byte(OP_CONSTANT), c.makeConstant(value))
 }
 
-func makeConstant(value Value) byte {
-	constant := currentChunk().AddConstant(value)
+func (c *Compiler) emitReturn() {
+	c.emitByte(byte(OP_RETURN))
+}
+
+func (c *Compiler) makeConstant(value Value) byte {
+	constant := c.chunk.AddConstant(value)
 	if constant > math.MaxUint8 {
-		parser.error("Too many constants in one chunk")
+		c.error("Too many constants in one chunk")
 		return 0
 	}
 
 	return byte(constant)
 }
 
-func currentChunk() *Chunk {
-	return compilingChunk
-}
+func (c *Compiler) end() {
+	c.emitReturn()
 
-func endCompiler() {
-	emitReturn()
-
-	if DEBUG_PRINT_CODE && !parser.hadError {
-		currentChunk().Disassemble("code")
+	if DEBUG_PRINT_CODE && !c.hadError {
+		c.chunk.Disassemble("code")
 	}
 }
 
-func emitReturn() {
-	emitByte(byte(OP_RETURN))
+/*
+ * Parsing functions
+ */
+func (p *Parser) advance() {
+	p.previous = p.current
+
+	for {
+		p.current = p.scanner.ScanToken()
+
+		if p.current.kind != TOKEN_ERROR {
+			break
+		}
+
+		p.errorAtCurrent(p.current.lexeme)
+	}
 }
 
-// parser stuff
+func (p *Parser) consume(tt TokenType, msg string) {
+	if p.current.kind == tt {
+		p.advance()
+		return
+	}
+
+	p.errorAtCurrent(msg)
+}
+
 func (p *Parser) error(message string) {
-	p.errorAt(parser.previous, message)
+	p.errorAt(p.previous, message)
 }
 
 func (p *Parser) errorAtCurrent(message string) {
@@ -276,5 +278,5 @@ func (p *Parser) errorAt(tok Token, message string) {
 	fmt.Fprintf(os.Stderr, ": %s\n", message)
 	p.hadError = true
 
-	debug.PrintStack()
+	// debug.PrintStack()
 }
