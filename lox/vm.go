@@ -3,6 +3,7 @@ package lox
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/mmcclimon/glox/lox/op"
 )
@@ -49,7 +50,7 @@ func (vm *VM) run() error {
 			fmt.Printf("          ")
 			for i := 0; i < vm.sp; i++ {
 				fmt.Printf("[ ")
-				vm.stack[i].Print()
+				PrintValue(vm.stack[i])
 				fmt.Printf(" ]")
 			}
 			fmt.Printf("\n")
@@ -57,28 +58,47 @@ func (vm *VM) run() error {
 
 		instruction := vm.readByte()
 
-		switch instruction {
-		case byte(OP_CONSTANT):
+		switch OpCode(instruction) {
+		case OP_CONSTANT:
 			constant := vm.readConstant()
 			vm.push(constant)
 
-		case byte(OP_ADD):
-			vm.binaryOp(op.Plus)
+		case OP_ADD:
+			if err := vm.binaryOp(op.Plus); err != nil {
+				return err
+			}
 
-		case byte(OP_SUBTRACT):
-			vm.binaryOp(op.Minus)
+		case OP_SUBTRACT:
+			if err := vm.binaryOp(op.Minus); err != nil {
+				return err
+			}
 
-		case byte(OP_MULTIPLY):
-			vm.binaryOp(op.Mul)
+		case OP_MULTIPLY:
+			if err := vm.binaryOp(op.Mul); err != nil {
+				return err
+			}
 
-		case byte(OP_DIVIDE):
-			vm.binaryOp(op.Div)
+		case OP_DIVIDE:
+			if err := vm.binaryOp(op.Div); err != nil {
+				return err
+			}
 
-		case byte(OP_NEGATE):
-			vm.push(-vm.pop())
+		case OP_NEGATE:
+			if _, isNum := vm.peek(0).(ValueNumber); !isNum {
+				return vm.RuntimeError("Operand must be a number.")
+			}
 
-		case byte(OP_RETURN):
-			vm.pop().Print()
+			vm.push(ValueNumber(-vm.pop().AsNumber()))
+
+		case OP_TRUE:
+			vm.push(ValueBool(true))
+		case OP_FALSE:
+			vm.push(ValueBool(false))
+		case OP_NIL:
+			vm.push(ValueNil(0))
+
+		case OP_RETURN:
+			PrintValue(vm.pop())
 			fmt.Printf("\n")
 			return nil
 		}
@@ -95,6 +115,16 @@ func (vm *VM) readConstant() Value {
 	return vm.chunk.constantAt(vm.readByte())
 }
 
+func (vm *VM) RuntimeError(format string, args ...any) error {
+	fmt.Fprintf(os.Stderr, format, args...)
+	fmt.Fprintf(os.Stderr, "\n")
+
+	line := vm.chunk.GetLine(vm.ip)
+	fmt.Fprintf(os.Stderr, "[line %d] in script\n", line)
+
+	return InterpretRuntimeError
+}
+
 // stack manipulation
 func (vm *VM) push(value Value) {
 	vm.stack[vm.sp] = value
@@ -106,21 +136,33 @@ func (vm *VM) pop() Value {
 	return vm.stack[vm.sp]
 }
 
-func (vm *VM) binaryOp(oper op.BinaryOp) {
-	b := vm.pop()
-	a := vm.pop()
+func (vm *VM) peek(dist int) Value {
+	return vm.stack[vm.sp-dist]
+}
+
+func (vm *VM) binaryOp(oper op.BinaryOp) error {
+	bval := vm.pop()
+	aval := vm.pop()
+
+	a, aIsNum := aval.(ValueNumber)
+	b, bIsNum := bval.(ValueNumber)
+
+	if !aIsNum || !bIsNum {
+		return vm.RuntimeError("Operand must be a number.")
+	}
 
 	var res Value
 	switch oper {
 	case op.Plus:
-		res = a + b
+		res = ValueNumber(a + b)
 	case op.Minus:
-		res = a - b
+		res = ValueNumber(a - b)
 	case op.Mul:
-		res = a * b
+		res = ValueNumber(a * b)
 	case op.Div:
-		res = a / b
+		res = ValueNumber(a / b)
 	}
 
 	vm.push(res)
+	return nil
 }
