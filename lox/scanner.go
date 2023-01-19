@@ -67,6 +67,7 @@ type Token struct {
 }
 
 var reservedWords map[string]TokenType
+var tokenNames map[TokenType]string
 
 func init() {
 	reservedWords = map[string]TokenType{
@@ -86,6 +87,49 @@ func init() {
 		"true":   TOKEN_TRUE,
 		"var":    TOKEN_VAR,
 		"while":  TOKEN_WHILE,
+	}
+
+	tokenNames = map[TokenType]string{
+		TOKEN_LEFT_PAREN:    "(",
+		TOKEN_RIGHT_PAREN:   ")",
+		TOKEN_LEFT_BRACE:    "{",
+		TOKEN_RIGHT_BRACE:   "}",
+		TOKEN_COMMA:         ",",
+		TOKEN_DOT:           ".",
+		TOKEN_MINUS:         "-",
+		TOKEN_PLUS:          "+",
+		TOKEN_SEMICOLON:     ";",
+		TOKEN_SLASH:         "/",
+		TOKEN_STAR:          "*",
+		TOKEN_BANG:          "!",
+		TOKEN_BANG_EQUAL:    "!=",
+		TOKEN_EQUAL:         "=",
+		TOKEN_EQUAL_EQUAL:   "==",
+		TOKEN_GREATER:       ">",
+		TOKEN_GREATER_EQUAL: ">=",
+		TOKEN_LESS:          "<",
+		TOKEN_LESS_EQUAL:    "<=",
+		TOKEN_IDENTIFIER:    "<identifier>",
+		TOKEN_STRING:        "<string>",
+		TOKEN_NUMBER:        "<number>",
+		TOKEN_AND:           "&&",
+		TOKEN_CLASS:         "class",
+		TOKEN_ELSE:          "else",
+		TOKEN_FALSE:         "false",
+		TOKEN_FOR:           "for",
+		TOKEN_FUN:           "fun",
+		TOKEN_IF:            "if",
+		TOKEN_NIL:           "nil",
+		TOKEN_OR:            "or",
+		TOKEN_PRINT:         "print",
+		TOKEN_RETURN:        "return",
+		TOKEN_SUPER:         "super",
+		TOKEN_THIS:          "this",
+		TOKEN_TRUE:          "true",
+		TOKEN_VAR:           "var",
+		TOKEN_WHILE:         "while",
+		TOKEN_ERROR:         "<error>",
+		TOKEN_EOF:           "<eof>",
 	}
 }
 
@@ -314,88 +358,5 @@ func (s *Scanner) match(expected byte) bool {
 }
 
 func (tt TokenType) String() string {
-	switch tt {
-	case TOKEN_LEFT_PAREN:
-		return "("
-	case TOKEN_RIGHT_PAREN:
-		return ")"
-	case TOKEN_LEFT_BRACE:
-		return "{"
-	case TOKEN_RIGHT_BRACE:
-		return "}"
-	case TOKEN_COMMA:
-		return ","
-	case TOKEN_DOT:
-		return "."
-	case TOKEN_MINUS:
-		return "-"
-	case TOKEN_PLUS:
-		return "+"
-	case TOKEN_SEMICOLON:
-		return ";"
-	case TOKEN_SLASH:
-		return "/"
-	case TOKEN_STAR:
-		return "*"
-	case TOKEN_BANG:
-		return "!"
-	case TOKEN_BANG_EQUAL:
-		return "!="
-	case TOKEN_EQUAL:
-		return "="
-	case TOKEN_EQUAL_EQUAL:
-		return "=="
-	case TOKEN_GREATER:
-		return ">"
-	case TOKEN_GREATER_EQUAL:
-		return ">="
-	case TOKEN_LESS:
-		return "<"
-	case TOKEN_LESS_EQUAL:
-		return "<="
-	case TOKEN_IDENTIFIER:
-		return "<identifier>"
-	case TOKEN_STRING:
-		return "<string>"
-	case TOKEN_NUMBER:
-		return "<number>"
-	case TOKEN_AND:
-		return "&&"
-	case TOKEN_CLASS:
-		return "class"
-	case TOKEN_ELSE:
-		return "else"
-	case TOKEN_FALSE:
-		return "false"
-	case TOKEN_FOR:
-		return "for"
-	case TOKEN_FUN:
-		return "fun"
-	case TOKEN_IF:
-		return "if"
-	case TOKEN_NIL:
-		return "nil"
-	case TOKEN_OR:
-		return "or"
-	case TOKEN_PRINT:
-		return "print"
-	case TOKEN_RETURN:
-		return "return"
-	case TOKEN_SUPER:
-		return "super"
-	case TOKEN_THIS:
-		return "this"
-	case TOKEN_TRUE:
-		return "true"
-	case TOKEN_VAR:
-		return "var"
-	case TOKEN_WHILE:
-		return "while"
-	case TOKEN_ERROR:
-		return "<error>"
-	case TOKEN_EOF:
-		return "<eof>"
-	}
-
-	return "unreachable?"
+	return tokenNames[tt]
 }
