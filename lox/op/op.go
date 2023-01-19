@@ -8,4 +8,6 @@ const (
 	Minus
 	Div
 	Mul
+	Greater
+	Less
 )

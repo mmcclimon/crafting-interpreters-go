@@ -83,6 +83,19 @@ func (vm *VM) run() error {
 				return err
 			}
 
+		case OP_GREATER:
+			if err := vm.binaryOp(op.Greater); err != nil {
+				return err
+			}
+
+		case OP_LESS:
+			if err := vm.binaryOp(op.Less); err != nil {
+				return err
+			}
+
+		case OP_NOT:
+			vm.push(ValueBool(vm.pop().IsFalsy()))
+
 		case OP_NEGATE:
 			if _, isNum := vm.peek(0).(ValueNumber); !isNum {
 				return vm.RuntimeError("Operand must be a number.")
@@ -96,6 +109,11 @@ func (vm *VM) run() error {
 			vm.push(ValueBool(false))
 		case OP_NIL:
 			vm.push(ValueNil(0))
+
+		case OP_EQUAL:
+			b := vm.pop()
+			a := vm.pop()
+			vm.push(ValueBool(a.Equals(b)))
 
 		case OP_RETURN:
 			PrintValue(vm.pop())
@@ -161,6 +179,10 @@ func (vm *VM) binaryOp(oper op.BinaryOp) error {
 		res = ValueNumber(a * b)
 	case op.Div:
 		res = ValueNumber(a / b)
+	case op.Greater:
+		res = ValueBool(a > b)
+	case op.Less:
+		res = ValueBool(a < b)
 	}
 
 	vm.push(res)

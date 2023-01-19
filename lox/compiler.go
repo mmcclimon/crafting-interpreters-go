@@ -84,14 +84,14 @@ func (c *Compiler) initRules() {
 		TOKEN_SEMICOLON:     {nil, nil, PREC_NONE},
 		TOKEN_SLASH:         {nil, c.binary, PREC_FACTOR},
 		TOKEN_STAR:          {nil, c.binary, PREC_FACTOR},
-		TOKEN_BANG:          {nil, nil, PREC_NONE},
-		TOKEN_BANG_EQUAL:    {nil, nil, PREC_NONE},
+		TOKEN_BANG:          {c.unary, nil, PREC_NONE},
+		TOKEN_BANG_EQUAL:    {nil, c.binary, PREC_EQUALITY},
 		TOKEN_EQUAL:         {nil, nil, PREC_NONE},
-		TOKEN_EQUAL_EQUAL:   {nil, nil, PREC_NONE},
-		TOKEN_GREATER:       {nil, nil, PREC_NONE},
-		TOKEN_GREATER_EQUAL: {nil, nil, PREC_NONE},
-		TOKEN_LESS:          {nil, nil, PREC_NONE},
-		TOKEN_LESS_EQUAL:    {nil, nil, PREC_NONE},
+		TOKEN_EQUAL_EQUAL:   {nil, c.binary, PREC_EQUALITY},
+		TOKEN_GREATER:       {nil, c.binary, PREC_COMPARISON},
+		TOKEN_GREATER_EQUAL: {nil, c.binary, PREC_COMPARISON},
+		TOKEN_LESS:          {nil, c.binary, PREC_COMPARISON},
+		TOKEN_LESS_EQUAL:    {nil, c.binary, PREC_COMPARISON},
 		TOKEN_IDENTIFIER:    {nil, nil, PREC_NONE},
 		TOKEN_STRING:        {nil, nil, PREC_NONE},
 		TOKEN_NUMBER:        {c.number, nil, PREC_NONE},
@@ -139,6 +139,8 @@ func (c *Compiler) unary() {
 	c.parsePrecedence(PREC_UNARY)
 
 	switch op {
+	case TOKEN_BANG:
+		c.emitByte(byte(OP_NOT))
 	case TOKEN_MINUS:
 		c.emitByte(byte(OP_NEGATE))
 	default:
@@ -152,6 +154,18 @@ func (c *Compiler) binary() {
 	c.parsePrecedence(rule.precedence + 1)
 
 	switch op {
+	case TOKEN_BANG_EQUAL:
+		c.emitBytes(byte(OP_EQUAL), byte(OP_NOT))
+	case TOKEN_EQUAL_EQUAL:
+		c.emitByte(byte(OP_EQUAL))
+	case TOKEN_GREATER:
+		c.emitByte(byte(OP_GREATER))
+	case TOKEN_GREATER_EQUAL:
+		c.emitBytes(byte(OP_LESS), byte(OP_NOT))
+	case TOKEN_LESS:
+		c.emitByte(byte(OP_LESS))
+	case TOKEN_LESS_EQUAL:
+		c.emitBytes(byte(OP_GREATER), byte(OP_NOT))
 	case TOKEN_PLUS:
 		c.emitByte(byte(OP_ADD))
 	case TOKEN_MINUS:

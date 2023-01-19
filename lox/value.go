@@ -6,6 +6,8 @@ import "fmt"
 type Value interface {
 	AsNumber() float64
 	AsBool() bool
+	IsFalsy() bool
+	Equals(Value) bool
 }
 type ValueArray []Value
 
@@ -40,3 +42,22 @@ func (v ValueBool) AsNumber() float64 { panic("AsNumber called on a ValueBool") 
 func (v ValueNil) AsNumber() float64  { panic("AsNumber called on a ValueNil") }
 func (v ValueNumber) AsBool() bool    { panic("AsBool called on a ValueNumber") }
 func (v ValueNil) AsBool() bool       { panic("AsBool called on a ValueNil") }
+
+func (v ValueBool) IsFalsy() bool   { return !v.AsBool() }
+func (v ValueNumber) IsFalsy() bool { return false }
+func (v ValueNil) IsFalsy() bool    { return true }
+
+func (v ValueBool) Equals(other Value) bool {
+	x, isBool := other.(ValueBool)
+	return isBool && v == x
+}
+
+func (v ValueNumber) Equals(other Value) bool {
+	x, isNum := other.(ValueNumber)
+	return isNum && v == x
+}
+
+func (v ValueNil) Equals(other Value) bool {
+	_, isNil := other.(ValueNil)
+	return isNil
+}
