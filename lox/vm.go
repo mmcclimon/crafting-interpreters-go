@@ -94,14 +94,15 @@ func (vm *VM) run() error {
 			}
 
 		case OP_NOT:
-			vm.push(ValueBool(vm.pop().IsFalsy()))
+			vm.push(ValueBool(IsFalsy(vm.pop())))
 
 		case OP_NEGATE:
 			if _, isNum := vm.peek(0).(ValueNumber); !isNum {
 				return vm.RuntimeError("Operand must be a number.")
 			}
 
-			vm.push(ValueNumber(-vm.pop().AsNumber()))
+			val := vm.pop().(ValueNumber)
+			vm.push(ValueNumber(-val))
 
 		case OP_TRUE:
 			vm.push(ValueBool(true))
