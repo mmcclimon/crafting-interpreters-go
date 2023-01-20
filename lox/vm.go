@@ -137,9 +137,18 @@ func (vm *VM) run() error {
 			name := vm.readConstant().(ValueString)
 			value, ok := vm.globals[string(name)]
 			if !ok {
-				vm.RuntimeError("Undefined variable '%s'.", name)
+				return vm.RuntimeError("Undefined variable '%s'.", name)
 			}
 			vm.push(value)
+
+		case OP_SET_GLOBAL:
+			name := string(vm.readConstant().(ValueString))
+
+			if _, exists := vm.globals[name]; !exists {
+				return vm.RuntimeError("Undefined variable '%s'.", name)
+			}
+
+			vm.globals[name] = vm.peek(0)
 
 		case OP_EQUAL:
 			b := vm.pop()

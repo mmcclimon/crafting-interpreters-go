@@ -24,7 +24,7 @@ type Parser struct {
 
 // This is nullary because it gets bound to the compiler instance on create,
 // so that we can call things as methods
-type parseFn func()
+type parseFn func(bool)
 type Precedence int
 
 type ParseRule struct {
@@ -136,7 +136,7 @@ func (c *Compiler) varDeclaration() {
 	if c.match(TOKEN_EQUAL) {
 		c.expression()
 	} else {
-		c.emitByte(byte(OP_NIL))
+		c.emitOp(OP_NIL)
 	}
 
 	c.consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration")
@@ -155,20 +155,20 @@ func (c *Compiler) statement() {
 func (c *Compiler) printStatement() {
 	c.expression()
 	c.consume(TOKEN_SEMICOLON, "Expect ';' after value")
-	c.emitByte(byte(OP_PRINT))
+	c.emitOp(OP_PRINT)
 }
 
 func (c *Compiler) expressionStatement() {
 	c.expression()
 	c.consume(TOKEN_SEMICOLON, "Expect ';' after expression")
-	c.emitByte(byte(OP_POP))
+	c.emitOp(OP_POP)
 }
 
 func (c *Compiler) expression() {
 	c.parsePrecedence(PREC_ASSIGNMENT)
 }
 
-func (c *Compiler) number() {
+func (c *Compiler) number(_ bool) {
 	n, err := strconv.ParseFloat(c.previous.lexeme, 64)
 	if err != nil {
 		panic("strconv.ParseFloat failed somehow")
@@ -177,78 +177,87 @@ func (c *Compiler) number() {
 	c.emitConstant(ValueNumber(n))
 }
 
-func (c *Compiler) string() {
+func (c *Compiler) string(_ bool) {
 	s := c.previous.lexeme
 	c.emitConstant(ValueString(s[1 : len(s)-1]))
 }
 
-func (c *Compiler) variable() {
-	c.namedVariable(c.previous)
+func (c *Compiler) variable(canAssign bool) {
+	c.namedVariable(c.previous, canAssign)
 }
 
-func (c *Compiler) namedVariable(name Token) {
+func (c *Compiler) namedVariable(name Token, canAssign bool) {
 	arg := c.identifierConstant(name)
-	c.emitBytes(byte(OP_GET_GLOBAL), arg)
+
+	if canAssign && c.match(TOKEN_EQUAL) {
+		c.expression()
+		c.emitOpAndArg(OP_SET_GLOBAL, arg)
+	} else {
+		c.emitOpAndArg(OP_GET_GLOBAL, arg)
+	}
 }
 
-func (c *Compiler) grouping() {
+func (c *Compiler) grouping(_ bool) {
 	c.expression()
 	c.consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.")
 }
 
-func (c *Compiler) unary() {
+func (c *Compiler) unary(_ bool) {
 	op := c.previous.kind
 	c.parsePrecedence(PREC_UNARY)
 
 	switch op {
 	case TOKEN_BANG:
-		c.emitByte(byte(OP_NOT))
+		c.emitOp(OP_NOT)
 	case TOKEN_MINUS:
-		c.emitByte(byte(OP_NEGATE))
+		c.emitOp(OP_NEGATE)
 	default:
 		panic("unreachable")
 	}
 }
 
-func (c *Compiler) binary() {
+func (c *Compiler) binary(_ bool) {
 	op := c.previous.kind
 	rule := c.getRule(op)
 	c.parsePrecedence(rule.precedence + 1)
 
 	switch op {
 	case TOKEN_BANG_EQUAL:
-		c.emitBytes(byte(OP_EQUAL), byte(OP_NOT))
+		c.emitOp(OP_EQUAL)
+		c.emitOp(OP_NOT)
 	case TOKEN_EQUAL_EQUAL:
-		c.emitByte(byte(OP_EQUAL))
+		c.emitOp(OP_EQUAL)
 	case TOKEN_GREATER:
-		c.emitByte(byte(OP_GREATER))
+		c.emitOp(OP_GREATER)
 	case TOKEN_GREATER_EQUAL:
-		c.emitBytes(byte(OP_LESS), byte(OP_NOT))
+		c.emitOp(OP_LESS)
+		c.emitOp(OP_NOT)
 	case TOKEN_LESS:
-		c.emitByte(byte(OP_LESS))
+		c.emitOp(OP_LESS)
 	case TOKEN_LESS_EQUAL:
-		c.emitBytes(byte(OP_GREATER), byte(OP_NOT))
+		c.emitOp(OP_GREATER)
+		c.emitOp(OP_NOT)
 	case TOKEN_PLUS:
-		c.emitByte(byte(OP_ADD))
+		c.emitOp(OP_ADD)
 	case TOKEN_MINUS:
-		c.emitByte(byte(OP_SUBTRACT))
+		c.emitOp(OP_SUBTRACT)
 	case TOKEN_STAR:
-		c.emitByte(byte(OP_MULTIPLY))
+		c.emitOp(OP_MULTIPLY)
 	case TOKEN_SLASH:
-		c.emitByte(byte(OP_DIVIDE))
+		c.emitOp(OP_DIVIDE)
 	default:
 		panic("unreachable")
 	}
 }
 
-func (c *Compiler) literal() {
+func (c *Compiler) literal(_ bool) {
 	switch c.previous.kind {
 	case TOKEN_FALSE:
-		c.emitByte(byte(OP_FALSE))
+		c.emitOp(OP_FALSE)
 	case TOKEN_NIL:
-		c.emitByte(byte(OP_NIL))
+		c.emitOp(OP_NIL)
 	case TOKEN_TRUE:
-		c.emitByte(byte(OP_TRUE))
+		c.emitOp(OP_TRUE)
 	default:
 		panic("unreachable")
 	}
@@ -266,12 +275,13 @@ func (c *Compiler) parsePrecedence(precedence Precedence) {
 		return
 	}
 
-	prefixRule()
+	canAssign := precedence <= PREC_ASSIGNMENT
+	prefixRule(canAssign)
 
 	for precedence <= c.getRule(c.current.kind).precedence {
 		c.advance()
 		infixRule := c.getRule(c.previous.kind).infix
-		infixRule()
+		infixRule(canAssign)
 	}
 }
 
@@ -281,7 +291,7 @@ func (c *Compiler) parseVariable(errMsg string) byte {
 }
 
 func (c *Compiler) defineVariable(global byte) {
-	c.emitBytes(byte(OP_DEFINE_GLOBAL), global)
+	c.emitOpAndArg(OP_DEFINE_GLOBAL, global)
 }
 
 func (c *Compiler) identifierConstant(name Token) byte {
@@ -289,6 +299,13 @@ func (c *Compiler) identifierConstant(name Token) byte {
 }
 
 // these functions all write to our chunk
+func (c *Compiler) emitOp(op OpCode) {
+	c.emitByte(byte(op))
+}
+
+func (c *Compiler) emitOpAndArg(op OpCode, arg byte) {
+	c.emitBytes(byte(op), arg)
+}
 
 func (c *Compiler) emitByte(item byte) {
 	c.chunk.Write(item, c.previous.line)
@@ -300,11 +317,11 @@ func (c *Compiler) emitBytes(item1 byte, item2 byte) {
 }
 
 func (c *Compiler) emitConstant(value Value) {
-	c.emitBytes(byte(OP_CONSTANT), c.makeConstant(value))
+	c.emitOpAndArg(OP_CONSTANT, c.makeConstant(value))
 }
 
 func (c *Compiler) emitReturn() {
-	c.emitByte(byte(OP_RETURN))
+	c.emitOp(OP_RETURN)
 }
 
 func (c *Compiler) makeConstant(value Value) byte {
