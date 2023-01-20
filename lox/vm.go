@@ -64,8 +64,20 @@ func (vm *VM) run() error {
 			vm.push(constant)
 
 		case OP_ADD:
-			if err := vm.binaryOp(op.Plus); err != nil {
-				return err
+			_, aIsStr := vm.peek(0).(ValueString)
+			_, bIsStr := vm.peek(1).(ValueString)
+
+			_, aIsNum := vm.peek(0).(ValueNumber)
+			_, bIsNum := vm.peek(1).(ValueNumber)
+
+			if aIsStr && bIsStr {
+				vm.concatenate()
+			} else if aIsNum && bIsNum {
+				if err := vm.binaryOp(op.Plus); err != nil {
+					return err
+				}
+			} else {
+				return vm.RuntimeError("Operands must be numbers or strings.")
 			}
 
 		case OP_SUBTRACT:
@@ -156,7 +168,7 @@ func (vm *VM) pop() Value {
 }
 
 func (vm *VM) peek(dist int) Value {
-	return vm.stack[vm.sp-dist]
+	return vm.stack[vm.sp-1-dist]
 }
 
 func (vm *VM) binaryOp(oper op.BinaryOp) error {
@@ -188,4 +200,10 @@ func (vm *VM) binaryOp(oper op.BinaryOp) error {
 
 	vm.push(res)
 	return nil
+}
+
+func (vm *VM) concatenate() {
+	b := vm.pop().(ValueString)
+	a := vm.pop().(ValueString)
+	vm.push(ValueString(a + b))
 }

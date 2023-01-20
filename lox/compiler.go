@@ -93,7 +93,7 @@ func (c *Compiler) initRules() {
 		TOKEN_LESS:          {nil, c.binary, PREC_COMPARISON},
 		TOKEN_LESS_EQUAL:    {nil, c.binary, PREC_COMPARISON},
 		TOKEN_IDENTIFIER:    {nil, nil, PREC_NONE},
-		TOKEN_STRING:        {nil, nil, PREC_NONE},
+		TOKEN_STRING:        {c.string, nil, PREC_NONE},
 		TOKEN_NUMBER:        {c.number, nil, PREC_NONE},
 		TOKEN_AND:           {nil, nil, PREC_NONE},
 		TOKEN_CLASS:         {nil, nil, PREC_NONE},
@@ -127,6 +127,11 @@ func (c *Compiler) number() {
 	}
 
 	c.emitConstant(ValueNumber(n))
+}
+
+func (c *Compiler) string() {
+	s := c.previous.lexeme
+	c.emitConstant(ValueString(s[1 : len(s)-1]))
 }
 
 func (c *Compiler) grouping() {
