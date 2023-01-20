@@ -64,10 +64,12 @@ func NewCompiler(source string) *Compiler {
 
 func (c *Compiler) Compile() bool {
 	c.advance()
-	c.expression()
-	c.consume(TOKEN_EOF, "Expect end of expression")
-	c.end()
 
+	for !c.match(TOKEN_EOF) {
+		c.declaration()
+	}
+
+	c.end()
 	return !c.hadError
 }
 
@@ -92,7 +94,7 @@ func (c *Compiler) initRules() {
 		TOKEN_GREATER_EQUAL: {nil, c.binary, PREC_COMPARISON},
 		TOKEN_LESS:          {nil, c.binary, PREC_COMPARISON},
 		TOKEN_LESS_EQUAL:    {nil, c.binary, PREC_COMPARISON},
-		TOKEN_IDENTIFIER:    {nil, nil, PREC_NONE},
+		TOKEN_IDENTIFIER:    {c.variable, nil, PREC_NONE},
 		TOKEN_STRING:        {c.string, nil, PREC_NONE},
 		TOKEN_NUMBER:        {c.number, nil, PREC_NONE},
 		TOKEN_AND:           {nil, nil, PREC_NONE},
@@ -116,6 +118,52 @@ func (c *Compiler) initRules() {
 	}
 }
 
+func (c *Compiler) declaration() {
+	if c.match(TOKEN_VAR) {
+		c.varDeclaration()
+	} else {
+		c.statement()
+	}
+
+	if c.panicMode {
+		c.synchronize()
+	}
+}
+
+func (c *Compiler) varDeclaration() {
+	global := c.parseVariable("Expect variable name.")
+
+	if c.match(TOKEN_EQUAL) {
+		c.expression()
+	} else {
+		c.emitByte(byte(OP_NIL))
+	}
+
+	c.consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration")
+
+	c.defineVariable(global)
+}
+
+func (c *Compiler) statement() {
+	if c.match(TOKEN_PRINT) {
+		c.printStatement()
+	} else {
+		c.expressionStatement()
+	}
+}
+
+func (c *Compiler) printStatement() {
+	c.expression()
+	c.consume(TOKEN_SEMICOLON, "Expect ';' after value")
+	c.emitByte(byte(OP_PRINT))
+}
+
+func (c *Compiler) expressionStatement() {
+	c.expression()
+	c.consume(TOKEN_SEMICOLON, "Expect ';' after expression")
+	c.emitByte(byte(OP_POP))
+}
+
 func (c *Compiler) expression() {
 	c.parsePrecedence(PREC_ASSIGNMENT)
 }
@@ -132,6 +180,15 @@ func (c *Compiler) number() {
 func (c *Compiler) string() {
 	s := c.previous.lexeme
 	c.emitConstant(ValueString(s[1 : len(s)-1]))
+}
+
+func (c *Compiler) variable() {
+	c.namedVariable(c.previous)
+}
+
+func (c *Compiler) namedVariable(name Token) {
+	arg := c.identifierConstant(name)
+	c.emitBytes(byte(OP_GET_GLOBAL), arg)
 }
 
 func (c *Compiler) grouping() {
@@ -218,6 +275,19 @@ func (c *Compiler) parsePrecedence(precedence Precedence) {
 	}
 }
 
+func (c *Compiler) parseVariable(errMsg string) byte {
+	c.consume(TOKEN_IDENTIFIER, errMsg)
+	return c.identifierConstant(c.previous)
+}
+
+func (c *Compiler) defineVariable(global byte) {
+	c.emitBytes(byte(OP_DEFINE_GLOBAL), global)
+}
+
+func (c *Compiler) identifierConstant(name Token) byte {
+	return c.makeConstant(ValueString(name.lexeme))
+}
+
 // these functions all write to our chunk
 
 func (c *Compiler) emitByte(item byte) {
@@ -258,6 +328,19 @@ func (c *Compiler) end() {
 /*
  * Parsing functions
  */
+func (p *Parser) match(tt TokenType) bool {
+	if !p.check(tt) {
+		return false
+	}
+
+	p.advance()
+	return true
+}
+
+func (p *Parser) check(tt TokenType) bool {
+	return p.current.kind == tt
+}
+
 func (p *Parser) advance() {
 	p.previous = p.current
 
@@ -311,4 +394,29 @@ func (p *Parser) errorAt(tok Token, message string) {
 	p.hadError = true
 
 	// debug.PrintStack()
+}
+
+func (p *Parser) synchronize() {
+	p.panicMode = false
+
+	for p.current.kind != TOKEN_EOF {
+		if p.previous.kind == TOKEN_SEMICOLON {
+			return
+		}
+
+		switch p.current.kind {
+		case TOKEN_CLASS,
+			TOKEN_FUN,
+			TOKEN_VAR,
+			TOKEN_FOR,
+			TOKEN_IF,
+			TOKEN_WHILE,
+			TOKEN_PRINT,
+			TOKEN_RETURN:
+			return
+
+		default:
+			// Do nothing.
+		}
+	}
 }

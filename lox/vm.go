@@ -14,14 +14,17 @@ var InterpretCompileError = errors.New("compile error")
 var InterpretRuntimeError = errors.New("runtime error")
 
 type VM struct {
-	chunk *Chunk
-	ip    int
-	stack [STACK_MAX]Value
-	sp    int
+	chunk   *Chunk
+	ip      int
+	stack   [STACK_MAX]Value
+	sp      int
+	globals map[string]Value
 }
 
 func NewVM() *VM {
-	return &VM{}
+	return &VM{
+		globals: make(map[string]Value),
+	}
 }
 
 func (vm *VM) InterpretString(source string) error {
@@ -122,15 +125,32 @@ func (vm *VM) run() error {
 			vm.push(ValueBool(false))
 		case OP_NIL:
 			vm.push(ValueNil(0))
+		case OP_POP:
+			vm.pop()
+
+		case OP_DEFINE_GLOBAL:
+			name := vm.readConstant().(ValueString)
+			vm.globals[string(name)] = vm.peek(0)
+			vm.pop()
+
+		case OP_GET_GLOBAL:
+			name := vm.readConstant().(ValueString)
+			value, ok := vm.globals[string(name)]
+			if !ok {
+				vm.RuntimeError("Undefined variable '%s'.", name)
+			}
+			vm.push(value)
 
 		case OP_EQUAL:
 			b := vm.pop()
 			a := vm.pop()
 			vm.push(ValueBool(a.Equals(b)))
 
-		case OP_RETURN:
+		case OP_PRINT:
 			PrintValue(vm.pop())
 			fmt.Printf("\n")
+
+		case OP_RETURN:
 			return nil
 		}
 	}
