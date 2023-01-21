@@ -128,6 +128,14 @@ func (vm *VM) run() error {
 		case OP_POP:
 			vm.pop()
 
+		case OP_GET_LOCAL:
+			slot := vm.readByte()
+			vm.push(vm.stack[slot])
+
+		case OP_SET_LOCAL:
+			slot := vm.readByte()
+			vm.stack[slot] = vm.peek(0)
+
 		case OP_DEFINE_GLOBAL:
 			name := vm.readConstant().(ValueString)
 			vm.globals[string(name)] = vm.peek(0)

@@ -1,6 +1,7 @@
 package lox
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -8,10 +9,20 @@ import (
 )
 
 // types
+const UINT8_COUNT = math.MaxUint8 + 1
+
 type Compiler struct {
 	chunk *Chunk
 	rules map[TokenType]ParseRule
 	Parser
+	localCount int
+	scopeDepth int
+	locals     [UINT8_COUNT]Local
+}
+
+type Local struct {
+	name  Token
+	depth int
 }
 
 type Parser struct {
@@ -147,6 +158,10 @@ func (c *Compiler) varDeclaration() {
 func (c *Compiler) statement() {
 	if c.match(TOKEN_PRINT) {
 		c.printStatement()
+	} else if c.match(TOKEN_LEFT_BRACE) {
+		c.beginScope()
+		c.block()
+		c.endScope()
 	} else {
 		c.expressionStatement()
 	}
@@ -168,6 +183,14 @@ func (c *Compiler) expression() {
 	c.parsePrecedence(PREC_ASSIGNMENT)
 }
 
+func (c *Compiler) block() {
+	for !c.check(TOKEN_RIGHT_BRACE) && !c.check(TOKEN_EOF) {
+		c.declaration()
+	}
+
+	c.consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.")
+}
+
 func (c *Compiler) number(_ bool) {
 	n, err := strconv.ParseFloat(c.previous.lexeme, 64)
 	if err != nil {
@@ -187,14 +210,39 @@ func (c *Compiler) variable(canAssign bool) {
 }
 
 func (c *Compiler) namedVariable(name Token, canAssign bool) {
-	arg := c.identifierConstant(name)
+	var getOp, setOp OpCode
+	arg, err := c.resolveLocal(name)
+
+	if err == nil {
+		getOp = OP_GET_LOCAL
+		setOp = OP_SET_LOCAL
+	} else {
+		arg = c.identifierConstant(name)
+		getOp = OP_GET_GLOBAL
+		setOp = OP_SET_GLOBAL
+	}
 
 	if canAssign && c.match(TOKEN_EQUAL) {
 		c.expression()
-		c.emitOpAndArg(OP_SET_GLOBAL, arg)
+		c.emitOpAndArg(setOp, arg)
 	} else {
-		c.emitOpAndArg(OP_GET_GLOBAL, arg)
+		c.emitOpAndArg(getOp, arg)
 	}
+}
+
+func (c *Compiler) resolveLocal(name Token) (byte, error) {
+	for i := c.localCount - 1; i >= 0; i-- {
+		local := c.locals[i]
+		if identifiersEqual(name, local.name) {
+			if local.depth == -1 {
+				c.error("Can't read local variable in its own initializer")
+			}
+
+			return byte(i), nil
+		}
+	}
+
+	return 0, errors.New("local var not found")
 }
 
 func (c *Compiler) grouping(_ bool) {
@@ -287,15 +335,65 @@ func (c *Compiler) parsePrecedence(precedence Precedence) {
 
 func (c *Compiler) parseVariable(errMsg string) byte {
 	c.consume(TOKEN_IDENTIFIER, errMsg)
+
+	c.declareVariable()
+	if c.scopeDepth > 0 {
+		return 0
+	}
+
 	return c.identifierConstant(c.previous)
 }
 
+func (c *Compiler) markInitialized() {
+	c.locals[c.localCount-1].depth = c.scopeDepth
+}
+
 func (c *Compiler) defineVariable(global byte) {
+	if c.scopeDepth > 0 {
+		c.markInitialized()
+		return
+	}
+
 	c.emitOpAndArg(OP_DEFINE_GLOBAL, global)
 }
 
 func (c *Compiler) identifierConstant(name Token) byte {
 	return c.makeConstant(ValueString(name.lexeme))
+}
+
+func identifiersEqual(a, b Token) bool {
+	return a.lexeme == b.lexeme
+}
+
+func (c *Compiler) declareVariable() {
+	if c.scopeDepth == 0 {
+		return
+	}
+
+	name := c.previous
+
+	for i := c.localCount - 1; i >= 0; i-- {
+		local := c.locals[i]
+		if local.depth != -1 && local.depth < c.scopeDepth {
+			break
+		}
+
+		if identifiersEqual(name, local.name) {
+			c.error("Already a variable with this name in this scope")
+		}
+	}
+
+	c.addLocal(name)
+}
+
+func (c *Compiler) addLocal(name Token) {
+	if c.localCount == UINT8_COUNT {
+		c.error("Too many local variables in scope")
+		return
+	}
+
+	c.locals[c.localCount] = Local{name, -1}
+	c.localCount++
 }
 
 // these functions all write to our chunk
@@ -340,6 +438,20 @@ func (c *Compiler) end() {
 	if DEBUG_PRINT_CODE && !c.hadError {
 		c.chunk.Disassemble("code")
 	}
+}
+
+func (c *Compiler) beginScope() {
+	c.scopeDepth++
+}
+
+func (c *Compiler) endScope() {
+	c.scopeDepth--
+
+	for c.localCount > 0 && c.locals[c.localCount-1].depth > c.scopeDepth {
+		c.emitOp(OP_POP)
+		c.localCount--
+	}
+
 }
 
 /*

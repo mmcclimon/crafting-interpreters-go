@@ -34,6 +34,8 @@ func (c *Chunk) DisassembleInstruction(offset int) int {
 	switch OpCode(instruction) {
 	case OP_CONSTANT, OP_DEFINE_GLOBAL, OP_SET_GLOBAL, OP_GET_GLOBAL:
 		return constantInstruction(s, c, offset)
+	case OP_GET_LOCAL, OP_SET_LOCAL:
+		return byteInstruction(s, c, offset)
 	default:
 		return simpleInstruction(s, offset)
 	}
@@ -50,5 +52,11 @@ func constantInstruction(name string, chunk *Chunk, offset int) int {
 	PrintValue(chunk.constantAt(constant)) // could be improved, probably
 	fmt.Printf("'\n")
 
+	return offset + 2
+}
+
+func byteInstruction(name string, chunk *Chunk, offset int) int {
+	slot := chunk.code[offset+1]
+	fmt.Printf("%-16s %4d\n", name, slot)
 	return offset + 2
 }
