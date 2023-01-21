@@ -108,7 +108,7 @@ func (c *Compiler) initRules() {
 		TOKEN_IDENTIFIER:    {c.variable, nil, PREC_NONE},
 		TOKEN_STRING:        {c.string, nil, PREC_NONE},
 		TOKEN_NUMBER:        {c.number, nil, PREC_NONE},
-		TOKEN_AND:           {nil, nil, PREC_NONE},
+		TOKEN_AND:           {nil, c.and, PREC_AND},
 		TOKEN_CLASS:         {nil, nil, PREC_NONE},
 		TOKEN_ELSE:          {nil, nil, PREC_NONE},
 		TOKEN_FALSE:         {c.literal, nil, PREC_NONE},
@@ -116,7 +116,7 @@ func (c *Compiler) initRules() {
 		TOKEN_FUN:           {nil, nil, PREC_NONE},
 		TOKEN_IF:            {nil, nil, PREC_NONE},
 		TOKEN_NIL:           {c.literal, nil, PREC_NONE},
-		TOKEN_OR:            {nil, nil, PREC_NONE},
+		TOKEN_OR:            {nil, c.or, PREC_OR},
 		TOKEN_PRINT:         {nil, nil, PREC_NONE},
 		TOKEN_RETURN:        {nil, nil, PREC_NONE},
 		TOKEN_SUPER:         {nil, nil, PREC_NONE},
@@ -333,6 +333,24 @@ func (c *Compiler) literal(_ bool) {
 	default:
 		panic("unreachable")
 	}
+}
+
+func (c *Compiler) and(bool) {
+	endJump := c.emitJump(OP_JUMP_IF_FALSE)
+
+	c.emitOp(OP_POP)
+	c.parsePrecedence(PREC_AND)
+
+	c.patchJump(endJump)
+}
+
+func (c *Compiler) or(bool) {
+	elseJump := c.emitJump(OP_JUMP_IF_TRUE)
+
+	c.emitOp(OP_POP)
+	c.parsePrecedence(PREC_OR)
+
+	c.patchJump(elseJump)
 }
 
 func (c *Compiler) getRule(op TokenType) ParseRule {

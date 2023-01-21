@@ -32,6 +32,7 @@ const (
 	OP_PRINT
 	OP_JUMP
 	OP_JUMP_IF_FALSE
+	OP_JUMP_IF_TRUE
 	OP_RETURN
 )
 
@@ -115,6 +116,7 @@ func init() {
 		OP_PRINT:         "OP_PRINT",
 		OP_JUMP:          "OP_JUMP",
 		OP_JUMP_IF_FALSE: "OP_JUMP_IF_FALSE",
+		OP_JUMP_IF_TRUE:  "OP_JUMP_IF_TRUE",
 		OP_RETURN:        "OP_RETURN",
 	}
 }

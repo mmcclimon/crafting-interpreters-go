@@ -177,6 +177,12 @@ func (vm *VM) run() error {
 				vm.ip += offset
 			}
 
+		case OP_JUMP_IF_TRUE:
+			offset := vm.readShort()
+			if !IsFalsy(vm.peek(0)) {
+				vm.ip += offset
+			}
+
 		case OP_RETURN:
 			return nil
 		}

@@ -36,7 +36,7 @@ func (c *Chunk) DisassembleInstruction(offset int) int {
 		return constantInstruction(s, c, offset)
 	case OP_GET_LOCAL, OP_SET_LOCAL:
 		return byteInstruction(s, c, offset)
-	case OP_JUMP, OP_JUMP_IF_FALSE:
+	case OP_JUMP, OP_JUMP_IF_FALSE, OP_JUMP_IF_TRUE:
 		return jumpInstruction(s, 1, c, offset)
 	default:
 		return simpleInstruction(s, offset)
