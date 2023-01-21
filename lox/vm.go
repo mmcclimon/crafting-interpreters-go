@@ -8,17 +8,24 @@ import (
 	"github.com/mmcclimon/glox/lox/op"
 )
 
-const STACK_MAX = 256
+const FRAMES_MAX = 64
+const STACK_MAX = FRAMES_MAX * UINT8_COUNT
 
 var InterpretCompileError = errors.New("compile error")
 var InterpretRuntimeError = errors.New("runtime error")
 
+type CallFrame struct {
+	function *ValueFunction
+	ip       int
+	slots    []Value
+}
+
 type VM struct {
-	chunk   *Chunk
-	ip      int
-	stack   [STACK_MAX]Value
-	sp      int
-	globals map[string]Value
+	frames     [FRAMES_MAX]CallFrame
+	frameCount int
+	stack      [STACK_MAX]Value
+	sp         int
+	globals    map[string]Value
 }
 
 func NewVM() *VM {
@@ -28,28 +35,37 @@ func NewVM() *VM {
 }
 
 func (vm *VM) InterpretString(source string) error {
-	compiler := NewCompiler(source)
+	compiler := NewCompiler(source, TYPE_SCRIPT)
+	function, err := compiler.Compile()
 
-	if !compiler.Compile() {
+	if err != nil {
 		return InterpretCompileError
 	}
 
-	vm.chunk = compiler.chunk
-	vm.ip = 0
+	vm.push(function)
+	vm.frameCount++
+	frame := vm.currentFrame()
+	frame.function = function
+	frame.ip = 0
+	frame.slots = vm.stack[0:]
 
 	return vm.run()
 }
 
+/*
 func (vm *VM) Interpret(chunk *Chunk) error {
 	vm.chunk = chunk
 	vm.ip = 0
 	return vm.run()
 }
+*/
 
 func (vm *VM) run() error {
+	frame := vm.currentFrame()
+
 	for {
 		if DEBUG_TRACE_EXECUTION {
-			vm.chunk.DisassembleInstruction(vm.ip)
+			frame.function.chunk.DisassembleInstruction(frame.ip)
 			fmt.Printf("          ")
 			for i := 0; i < vm.sp; i++ {
 				fmt.Printf("[ ")
@@ -130,11 +146,11 @@ func (vm *VM) run() error {
 
 		case OP_GET_LOCAL:
 			slot := vm.readByte()
-			vm.push(vm.stack[slot])
+			vm.push(frame.slots[slot])
 
 		case OP_SET_LOCAL:
 			slot := vm.readByte()
-			vm.stack[slot] = vm.peek(0)
+			frame.slots[slot] = vm.peek(0)
 
 		case OP_DEFINE_GLOBAL:
 			name := vm.readConstant().(ValueString)
@@ -169,23 +185,23 @@ func (vm *VM) run() error {
 
 		case OP_JUMP:
 			offset := vm.readShort()
-			vm.ip += offset
+			frame.ip += offset
 
 		case OP_JUMP_IF_FALSE:
 			offset := vm.readShort()
 			if IsFalsy(vm.peek(0)) {
-				vm.ip += offset
+				frame.ip += offset
 			}
 
 		case OP_JUMP_IF_TRUE:
 			offset := vm.readShort()
 			if !IsFalsy(vm.peek(0)) {
-				vm.ip += offset
+				frame.ip += offset
 			}
 
 		case OP_LOOP:
 			offset := vm.readShort()
-			vm.ip -= offset
+			frame.ip -= offset
 
 		case OP_RETURN:
 			return nil
@@ -193,27 +209,34 @@ func (vm *VM) run() error {
 	}
 }
 
+func (vm *VM) currentFrame() *CallFrame {
+	return &vm.frames[vm.frameCount-1]
+}
+
 func (vm *VM) readByte() byte {
-	ret := vm.chunk.code[vm.ip]
-	vm.ip++
-	return ret
+	frame := vm.currentFrame()
+	frame.ip++
+	return frame.function.chunk.code[frame.ip-1]
 }
 
 func (vm *VM) readConstant() Value {
-	return vm.chunk.constantAt(vm.readByte())
+	frame := vm.currentFrame()
+	return frame.function.chunk.constantAt(vm.readByte())
 }
 
 func (vm *VM) readShort() int {
-	vm.ip += 2
-	code := vm.chunk.code
-	return int(code[vm.ip-2]<<8 | code[vm.ip-1])
+	frame := vm.currentFrame()
+	frame.ip += 2
+	code := frame.function.chunk.code
+	return int(code[frame.ip-2]<<8 | code[frame.ip-1])
 }
 
 func (vm *VM) RuntimeError(format string, args ...any) error {
 	fmt.Fprintf(os.Stderr, format, args...)
 	fmt.Fprintf(os.Stderr, "\n")
 
-	line := vm.chunk.GetLine(vm.ip)
+	frame := vm.currentFrame()
+	line := frame.function.chunk.GetLine(frame.ip)
 	fmt.Fprintf(os.Stderr, "[line %d] in script\n", line)
 
 	return InterpretRuntimeError

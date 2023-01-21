@@ -12,8 +12,9 @@ import (
 const UINT8_COUNT = math.MaxUint8 + 1
 
 type Compiler struct {
-	chunk *Chunk
-	rules map[TokenType]ParseRule
+	function *ValueFunction
+	kind     FunctionType
+	rules    map[TokenType]ParseRule
 	Parser
 	localCount int
 	scopeDepth int
@@ -37,6 +38,7 @@ type Parser struct {
 // so that we can call things as methods
 type parseFn func(bool)
 type Precedence int
+type FunctionType int
 
 type ParseRule struct {
 	prefix     parseFn
@@ -58,9 +60,15 @@ const (
 	PREC_PRIMARY
 )
 
-func NewCompiler(source string) *Compiler {
+const (
+	TYPE_FUNCTION FunctionType = iota
+	TYPE_SCRIPT
+)
+
+func NewCompiler(source string, kind FunctionType) *Compiler {
 	c := &Compiler{
-		chunk: NewChunk(),
+		function: NewFunction(),
+		kind:     kind,
 		Parser: Parser{
 			scanner:   NewScanner(source),
 			hadError:  false,
@@ -70,18 +78,27 @@ func NewCompiler(source string) *Compiler {
 
 	c.initRules()
 
+	local := c.locals[c.localCount]
+	local.name.lexeme = ""
+	c.localCount++
+
 	return c
 }
 
-func (c *Compiler) Compile() bool {
+func (c *Compiler) Compile() (*ValueFunction, error) {
 	c.advance()
 
 	for !c.match(TOKEN_EOF) {
 		c.declaration()
 	}
 
-	c.end()
-	return !c.hadError
+	function := c.end()
+
+	if c.hadError {
+		return nil, errors.New("compilation error")
+	}
+
+	return function, nil
 }
 
 func (c *Compiler) initRules() {
@@ -197,7 +214,7 @@ func (c *Compiler) forStatement() {
 		c.expression()
 	}
 
-	loopStart := c.chunk.Count()
+	loopStart := c.currentChunk().Count()
 	exitJump := -1
 
 	if !c.match(TOKEN_SEMICOLON) {
@@ -210,7 +227,7 @@ func (c *Compiler) forStatement() {
 
 	if !c.match(TOKEN_RIGHT_PAREN) {
 		bodyJump := c.emitJump(OP_JUMP)
-		incStart := c.chunk.Count()
+		incStart := c.currentChunk().Count()
 
 		c.expression()
 		c.emitOp(OP_POP)
@@ -255,7 +272,7 @@ func (c *Compiler) ifStatement() {
 }
 
 func (c *Compiler) whileStatement() {
-	loopStart := c.chunk.Count()
+	loopStart := c.currentChunk().Count()
 	c.consume(TOKEN_LEFT_PAREN, "Expect '(' after while.")
 	c.expression()
 	c.consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.")
@@ -506,6 +523,10 @@ func (c *Compiler) addLocal(name Token) {
 }
 
 // these functions all write to our chunk
+func (c *Compiler) currentChunk() *Chunk {
+	return c.function.chunk
+}
+
 func (c *Compiler) emitOp(op OpCode) {
 	c.emitByte(byte(op))
 }
@@ -515,7 +536,7 @@ func (c *Compiler) emitOpAndArg(op OpCode, arg byte) {
 }
 
 func (c *Compiler) emitByte(item byte) {
-	c.chunk.Write(item, c.previous.line)
+	c.currentChunk().Write(item, c.previous.line)
 }
 
 func (c *Compiler) emitBytes(item1 byte, item2 byte) {
@@ -526,13 +547,13 @@ func (c *Compiler) emitBytes(item1 byte, item2 byte) {
 func (c *Compiler) emitJump(op OpCode) int {
 	c.emitOp(op)
 	c.emitBytes(0xff, 0xff)
-	return c.chunk.Count() - 2
+	return c.currentChunk().Count() - 2
 }
 
 func (c *Compiler) emitLoop(start int) {
 	c.emitOp(OP_LOOP)
 
-	offset := c.chunk.Count() - start + 2
+	offset := c.currentChunk().Count() - start + 2
 	if offset > math.MaxUint16 {
 		c.error("Loop body too large.")
 	}
@@ -543,14 +564,14 @@ func (c *Compiler) emitLoop(start int) {
 
 func (c *Compiler) patchJump(offset int) {
 	// -2 adjusts for bytecode of the jump op itself
-	jump := c.chunk.Count() - offset - 2
+	jump := c.currentChunk().Count() - offset - 2
 
 	if jump > math.MaxUint16 {
 		c.error("Too much code to jump over")
 	}
 
-	c.chunk.code[offset] = byte((jump >> 8) & 0xff)
-	c.chunk.code[offset+1] = byte(jump & 0xff)
+	c.currentChunk().code[offset] = byte((jump >> 8) & 0xff)
+	c.currentChunk().code[offset+1] = byte(jump & 0xff)
 }
 
 func (c *Compiler) emitConstant(value Value) {
@@ -562,7 +583,7 @@ func (c *Compiler) emitReturn() {
 }
 
 func (c *Compiler) makeConstant(value Value) byte {
-	constant := c.chunk.AddConstant(value)
+	constant := c.currentChunk().AddConstant(value)
 	if constant > math.MaxUint8 {
 		c.error("Too many constants in one chunk")
 		return 0
@@ -571,12 +592,22 @@ func (c *Compiler) makeConstant(value Value) byte {
 	return byte(constant)
 }
 
-func (c *Compiler) end() {
+func (c *Compiler) end() *ValueFunction {
 	c.emitReturn()
 
+	function := c.function
+
 	if DEBUG_PRINT_CODE && !c.hadError {
-		c.chunk.Disassemble("code")
+		name := function.name
+
+		if function.name == "" {
+			name = "<script>"
+		}
+
+		c.currentChunk().Disassemble(name)
 	}
+
+	return c.function
 }
 
 func (c *Compiler) beginScope() {
