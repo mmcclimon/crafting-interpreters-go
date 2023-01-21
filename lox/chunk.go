@@ -30,6 +30,8 @@ const (
 	OP_RETURN
 )
 
+var opNames map[OpCode]string
+
 func NewChunk() *Chunk {
 	code := make([]byte, 0, 8)
 	return &Chunk{code: code, constants: NewValueArray()}
@@ -80,4 +82,34 @@ func (l *lines) getForOffset(offset int) int {
 	}
 
 	panic("internal error in line accounting")
+}
+
+// OpCode stuff
+
+func init() {
+	opNames = map[OpCode]string{
+		OP_CONSTANT:      "OP_CONSTANT",
+		OP_NIL:           "OP_NIL",
+		OP_TRUE:          "OP_TRUE",
+		OP_FALSE:         "OP_FALSE",
+		OP_POP:           "OP_POP",
+		OP_DEFINE_GLOBAL: "OP_DEFINE_GLOBAL",
+		OP_GET_GLOBAL:    "OP_GET_GLOBAL",
+		OP_SET_GLOBAL:    "OP_SET_GLOBAL",
+		OP_EQUAL:         "OP_EQUAL",
+		OP_GREATER:       "OP_GREATER",
+		OP_LESS:          "OP_LESS",
+		OP_ADD:           "OP_ADD",
+		OP_SUBTRACT:      "OP_SUBTRACT",
+		OP_MULTIPLY:      "OP_MULTIPLY",
+		OP_DIVIDE:        "OP_DIVIDE",
+		OP_NOT:           "OP_NOT",
+		OP_NEGATE:        "OP_NEGATE",
+		OP_PRINT:         "OP_PRINT",
+		OP_RETURN:        "OP_RETURN",
+	}
+}
+
+func (op OpCode) String() string {
+	return opNames[op]
 }
