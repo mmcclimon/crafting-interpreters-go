@@ -36,6 +36,8 @@ func (c *Chunk) DisassembleInstruction(offset int) int {
 		return constantInstruction(s, c, offset)
 	case OP_GET_LOCAL, OP_SET_LOCAL:
 		return byteInstruction(s, c, offset)
+	case OP_JUMP, OP_JUMP_IF_FALSE:
+		return jumpInstruction(s, 1, c, offset)
 	default:
 		return simpleInstruction(s, offset)
 	}
@@ -59,4 +61,12 @@ func byteInstruction(name string, chunk *Chunk, offset int) int {
 	slot := chunk.code[offset+1]
 	fmt.Printf("%-16s %4d\n", name, slot)
 	return offset + 2
+}
+
+func jumpInstruction(name string, sign int, chunk *Chunk, offset int) int {
+	jump := int(chunk.code[offset+1] << 8)
+	jump |= int(chunk.code[offset+2])
+	fmt.Printf("%-16s %4d -> %d\n", name, offset, offset+3+sign*jump)
+
+	return offset + 3
 }

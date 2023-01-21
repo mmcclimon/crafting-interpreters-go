@@ -167,6 +167,16 @@ func (vm *VM) run() error {
 			PrintValue(vm.pop())
 			fmt.Printf("\n")
 
+		case OP_JUMP:
+			offset := vm.readShort()
+			vm.ip += offset
+
+		case OP_JUMP_IF_FALSE:
+			offset := vm.readShort()
+			if IsFalsy(vm.peek(0)) {
+				vm.ip += offset
+			}
+
 		case OP_RETURN:
 			return nil
 		}
@@ -181,6 +191,12 @@ func (vm *VM) readByte() byte {
 
 func (vm *VM) readConstant() Value {
 	return vm.chunk.constantAt(vm.readByte())
+}
+
+func (vm *VM) readShort() int {
+	vm.ip += 2
+	code := vm.chunk.code
+	return int(code[vm.ip-2]<<8 | code[vm.ip-1])
 }
 
 func (vm *VM) RuntimeError(format string, args ...any) error {

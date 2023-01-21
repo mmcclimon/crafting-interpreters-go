@@ -158,6 +158,8 @@ func (c *Compiler) varDeclaration() {
 func (c *Compiler) statement() {
 	if c.match(TOKEN_PRINT) {
 		c.printStatement()
+	} else if c.match(TOKEN_IF) {
+		c.ifStatement()
 	} else if c.match(TOKEN_LEFT_BRACE) {
 		c.beginScope()
 		c.block()
@@ -177,6 +179,28 @@ func (c *Compiler) expressionStatement() {
 	c.expression()
 	c.consume(TOKEN_SEMICOLON, "Expect ';' after expression")
 	c.emitOp(OP_POP)
+}
+
+func (c *Compiler) ifStatement() {
+	c.consume(TOKEN_LEFT_PAREN, "Expect '(' after if.")
+	c.expression()
+	c.consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.")
+
+	thenJump := c.emitJump(OP_JUMP_IF_FALSE)
+	c.emitOp(OP_POP) // pop off the condition
+
+	c.statement()
+
+	elseJump := c.emitJump(OP_JUMP)
+
+	c.patchJump(thenJump)
+	c.emitOp(OP_POP) // the condition, else case
+
+	if c.match(TOKEN_ELSE) {
+		c.statement()
+	}
+
+	c.patchJump(elseJump)
 }
 
 func (c *Compiler) expression() {
@@ -412,6 +436,24 @@ func (c *Compiler) emitByte(item byte) {
 func (c *Compiler) emitBytes(item1 byte, item2 byte) {
 	c.emitByte(item1)
 	c.emitByte(item2)
+}
+
+func (c *Compiler) emitJump(op OpCode) int {
+	c.emitOp(op)
+	c.emitBytes(0xff, 0xff)
+	return len(c.chunk.code) - 2
+}
+
+func (c *Compiler) patchJump(offset int) {
+	// -2 adjusts for bytecode of the jump op itself
+	jump := len(c.chunk.code) - offset - 2
+
+	if jump > math.MaxUint16 {
+		c.error("Too much code to jump over")
+	}
+
+	c.chunk.code[offset] = byte((jump >> 8) & 0xff)
+	c.chunk.code[offset+1] = byte(jump & 0xff)
 }
 
 func (c *Compiler) emitConstant(value Value) {

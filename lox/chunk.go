@@ -9,7 +9,8 @@ type Chunk struct {
 }
 
 const (
-	OP_CONSTANT OpCode = iota
+	OP_UNKNOWN OpCode = iota
+	OP_CONSTANT
 	OP_NIL
 	OP_TRUE
 	OP_FALSE
@@ -29,6 +30,8 @@ const (
 	OP_NOT
 	OP_NEGATE
 	OP_PRINT
+	OP_JUMP
+	OP_JUMP_IF_FALSE
 	OP_RETURN
 )
 
@@ -110,6 +113,8 @@ func init() {
 		OP_NOT:           "OP_NOT",
 		OP_NEGATE:        "OP_NEGATE",
 		OP_PRINT:         "OP_PRINT",
+		OP_JUMP:          "OP_JUMP",
+		OP_JUMP_IF_FALSE: "OP_JUMP_IF_FALSE",
 		OP_RETURN:        "OP_RETURN",
 	}
 }
