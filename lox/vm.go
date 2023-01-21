@@ -35,8 +35,7 @@ func NewVM() *VM {
 }
 
 func (vm *VM) InterpretString(source string) error {
-	compiler := NewCompiler(source, TYPE_SCRIPT)
-	function, err := compiler.Compile()
+	function, err := Compile(source)
 
 	if err != nil {
 		return InterpretCompileError

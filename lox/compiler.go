@@ -12,10 +12,9 @@ import (
 const UINT8_COUNT = math.MaxUint8 + 1
 
 type Compiler struct {
-	function *ValueFunction
-	kind     FunctionType
-	rules    map[TokenType]ParseRule
-	Parser
+	function   *ValueFunction
+	kind       FunctionType
+	rules      map[TokenType]ParseRule
 	localCount int
 	scopeDepth int
 	locals     [UINT8_COUNT]Local
@@ -25,6 +24,9 @@ type Local struct {
 	name  Token
 	depth int
 }
+
+// this is a global, basically, set up when we call Compile()
+var parser Parser
 
 type Parser struct {
 	scanner   *Scanner
@@ -65,15 +67,10 @@ const (
 	TYPE_SCRIPT
 )
 
-func NewCompiler(source string, kind FunctionType) *Compiler {
+func NewCompiler(kind FunctionType) *Compiler {
 	c := &Compiler{
 		function: NewFunction(),
 		kind:     kind,
-		Parser: Parser{
-			scanner:   NewScanner(source),
-			hadError:  false,
-			panicMode: false,
-		},
 	}
 
 	c.initRules()
@@ -85,16 +82,24 @@ func NewCompiler(source string, kind FunctionType) *Compiler {
 	return c
 }
 
-func (c *Compiler) Compile() (*ValueFunction, error) {
-	c.advance()
+func Compile(source string) (*ValueFunction, error) {
+	parser = Parser{
+		scanner:   NewScanner(source),
+		hadError:  false,
+		panicMode: false,
+	}
 
-	for !c.match(TOKEN_EOF) {
+	c := NewCompiler(TYPE_SCRIPT)
+
+	parser.advance()
+
+	for !parser.match(TOKEN_EOF) {
 		c.declaration()
 	}
 
 	function := c.end()
 
-	if c.hadError {
+	if parser.hadError {
 		return nil, errors.New("compilation error")
 	}
 
@@ -147,41 +152,41 @@ func (c *Compiler) initRules() {
 }
 
 func (c *Compiler) declaration() {
-	if c.match(TOKEN_VAR) {
+	if parser.match(TOKEN_VAR) {
 		c.varDeclaration()
 	} else {
 		c.statement()
 	}
 
-	if c.panicMode {
-		c.synchronize()
+	if parser.panicMode {
+		parser.synchronize()
 	}
 }
 
 func (c *Compiler) varDeclaration() {
 	global := c.parseVariable("Expect variable name.")
 
-	if c.match(TOKEN_EQUAL) {
+	if parser.match(TOKEN_EQUAL) {
 		c.expression()
 	} else {
 		c.emitOp(OP_NIL)
 	}
 
-	c.consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration")
+	parser.consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration")
 
 	c.defineVariable(global)
 }
 
 func (c *Compiler) statement() {
-	if c.match(TOKEN_PRINT) {
+	if parser.match(TOKEN_PRINT) {
 		c.printStatement()
-	} else if c.match(TOKEN_FOR) {
+	} else if parser.match(TOKEN_FOR) {
 		c.forStatement()
-	} else if c.match(TOKEN_IF) {
+	} else if parser.match(TOKEN_IF) {
 		c.ifStatement()
-	} else if c.match(TOKEN_WHILE) {
+	} else if parser.match(TOKEN_WHILE) {
 		c.whileStatement()
-	} else if c.match(TOKEN_LEFT_BRACE) {
+	} else if parser.match(TOKEN_LEFT_BRACE) {
 		c.beginScope()
 		c.block()
 		c.endScope()
@@ -192,23 +197,23 @@ func (c *Compiler) statement() {
 
 func (c *Compiler) printStatement() {
 	c.expression()
-	c.consume(TOKEN_SEMICOLON, "Expect ';' after value")
+	parser.consume(TOKEN_SEMICOLON, "Expect ';' after value")
 	c.emitOp(OP_PRINT)
 }
 
 func (c *Compiler) expressionStatement() {
 	c.expression()
-	c.consume(TOKEN_SEMICOLON, "Expect ';' after expression")
+	parser.consume(TOKEN_SEMICOLON, "Expect ';' after expression")
 	c.emitOp(OP_POP)
 }
 
 func (c *Compiler) forStatement() {
 	c.beginScope()
-	c.consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.")
+	parser.consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.")
 
-	if c.match(TOKEN_SEMICOLON) {
+	if parser.match(TOKEN_SEMICOLON) {
 		// no initializer
-	} else if c.match(TOKEN_VAR) {
+	} else if parser.match(TOKEN_VAR) {
 		c.varDeclaration()
 	} else {
 		c.expression()
@@ -217,21 +222,21 @@ func (c *Compiler) forStatement() {
 	loopStart := c.currentChunk().Count()
 	exitJump := -1
 
-	if !c.match(TOKEN_SEMICOLON) {
+	if !parser.match(TOKEN_SEMICOLON) {
 		c.expression()
-		c.consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.")
+		parser.consume(TOKEN_SEMICOLON, "Expect ';' after loop condition.")
 
 		exitJump = c.emitJump(OP_JUMP_IF_FALSE)
 		c.emitOp(OP_POP)
 	}
 
-	if !c.match(TOKEN_RIGHT_PAREN) {
+	if !parser.match(TOKEN_RIGHT_PAREN) {
 		bodyJump := c.emitJump(OP_JUMP)
 		incStart := c.currentChunk().Count()
 
 		c.expression()
 		c.emitOp(OP_POP)
-		c.consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.")
+		parser.consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.")
 
 		c.emitLoop(loopStart)
 		loopStart = incStart
@@ -250,9 +255,9 @@ func (c *Compiler) forStatement() {
 }
 
 func (c *Compiler) ifStatement() {
-	c.consume(TOKEN_LEFT_PAREN, "Expect '(' after if.")
+	parser.consume(TOKEN_LEFT_PAREN, "Expect '(' after if.")
 	c.expression()
-	c.consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.")
+	parser.consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.")
 
 	thenJump := c.emitJump(OP_JUMP_IF_FALSE)
 	c.emitOp(OP_POP) // pop off the condition
@@ -264,7 +269,7 @@ func (c *Compiler) ifStatement() {
 	c.patchJump(thenJump)
 	c.emitOp(OP_POP) // the condition, else case
 
-	if c.match(TOKEN_ELSE) {
+	if parser.match(TOKEN_ELSE) {
 		c.statement()
 	}
 
@@ -273,9 +278,9 @@ func (c *Compiler) ifStatement() {
 
 func (c *Compiler) whileStatement() {
 	loopStart := c.currentChunk().Count()
-	c.consume(TOKEN_LEFT_PAREN, "Expect '(' after while.")
+	parser.consume(TOKEN_LEFT_PAREN, "Expect '(' after while.")
 	c.expression()
-	c.consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.")
+	parser.consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.")
 
 	exitJump := c.emitJump(OP_JUMP_IF_FALSE)
 	c.emitOp(OP_POP)
@@ -292,15 +297,15 @@ func (c *Compiler) expression() {
 }
 
 func (c *Compiler) block() {
-	for !c.check(TOKEN_RIGHT_BRACE) && !c.check(TOKEN_EOF) {
+	for !parser.check(TOKEN_RIGHT_BRACE) && !parser.check(TOKEN_EOF) {
 		c.declaration()
 	}
 
-	c.consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.")
+	parser.consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.")
 }
 
 func (c *Compiler) number(_ bool) {
-	n, err := strconv.ParseFloat(c.previous.lexeme, 64)
+	n, err := strconv.ParseFloat(parser.previous.lexeme, 64)
 	if err != nil {
 		panic("strconv.ParseFloat failed somehow")
 	}
@@ -309,12 +314,12 @@ func (c *Compiler) number(_ bool) {
 }
 
 func (c *Compiler) string(_ bool) {
-	s := c.previous.lexeme
+	s := parser.previous.lexeme
 	c.emitConstant(ValueString(s[1 : len(s)-1]))
 }
 
 func (c *Compiler) variable(canAssign bool) {
-	c.namedVariable(c.previous, canAssign)
+	c.namedVariable(parser.previous, canAssign)
 }
 
 func (c *Compiler) namedVariable(name Token, canAssign bool) {
@@ -330,7 +335,7 @@ func (c *Compiler) namedVariable(name Token, canAssign bool) {
 		setOp = OP_SET_GLOBAL
 	}
 
-	if canAssign && c.match(TOKEN_EQUAL) {
+	if canAssign && parser.match(TOKEN_EQUAL) {
 		c.expression()
 		c.emitOpAndArg(setOp, arg)
 	} else {
@@ -343,7 +348,7 @@ func (c *Compiler) resolveLocal(name Token) (byte, error) {
 		local := c.locals[i]
 		if identifiersEqual(name, local.name) {
 			if local.depth == -1 {
-				c.error("Can't read local variable in its own initializer")
+				parser.error("Can't read local variable in its own initializer")
 			}
 
 			return byte(i), nil
@@ -355,11 +360,11 @@ func (c *Compiler) resolveLocal(name Token) (byte, error) {
 
 func (c *Compiler) grouping(_ bool) {
 	c.expression()
-	c.consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.")
+	parser.consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression.")
 }
 
 func (c *Compiler) unary(_ bool) {
-	op := c.previous.kind
+	op := parser.previous.kind
 	c.parsePrecedence(PREC_UNARY)
 
 	switch op {
@@ -373,7 +378,7 @@ func (c *Compiler) unary(_ bool) {
 }
 
 func (c *Compiler) binary(_ bool) {
-	op := c.previous.kind
+	op := parser.previous.kind
 	rule := c.getRule(op)
 	c.parsePrecedence(rule.precedence + 1)
 
@@ -407,7 +412,7 @@ func (c *Compiler) binary(_ bool) {
 }
 
 func (c *Compiler) literal(_ bool) {
-	switch c.previous.kind {
+	switch parser.previous.kind {
 	case TOKEN_FALSE:
 		c.emitOp(OP_FALSE)
 	case TOKEN_NIL:
@@ -442,32 +447,32 @@ func (c *Compiler) getRule(op TokenType) ParseRule {
 }
 
 func (c *Compiler) parsePrecedence(precedence Precedence) {
-	c.advance()
-	prefixRule := c.getRule(c.previous.kind).prefix
+	parser.advance()
+	prefixRule := c.getRule(parser.previous.kind).prefix
 	if prefixRule == nil {
-		c.error("Expect expression.")
+		parser.error("Expect expression.")
 		return
 	}
 
 	canAssign := precedence <= PREC_ASSIGNMENT
 	prefixRule(canAssign)
 
-	for precedence <= c.getRule(c.current.kind).precedence {
-		c.advance()
-		infixRule := c.getRule(c.previous.kind).infix
+	for precedence <= c.getRule(parser.current.kind).precedence {
+		parser.advance()
+		infixRule := c.getRule(parser.previous.kind).infix
 		infixRule(canAssign)
 	}
 }
 
 func (c *Compiler) parseVariable(errMsg string) byte {
-	c.consume(TOKEN_IDENTIFIER, errMsg)
+	parser.consume(TOKEN_IDENTIFIER, errMsg)
 
 	c.declareVariable()
 	if c.scopeDepth > 0 {
 		return 0
 	}
 
-	return c.identifierConstant(c.previous)
+	return c.identifierConstant(parser.previous)
 }
 
 func (c *Compiler) markInitialized() {
@@ -496,7 +501,7 @@ func (c *Compiler) declareVariable() {
 		return
 	}
 
-	name := c.previous
+	name := parser.previous
 
 	for i := c.localCount - 1; i >= 0; i-- {
 		local := c.locals[i]
@@ -505,7 +510,7 @@ func (c *Compiler) declareVariable() {
 		}
 
 		if identifiersEqual(name, local.name) {
-			c.error("Already a variable with this name in this scope")
+			parser.error("Already a variable with this name in this scope")
 		}
 	}
 
@@ -514,7 +519,7 @@ func (c *Compiler) declareVariable() {
 
 func (c *Compiler) addLocal(name Token) {
 	if c.localCount == UINT8_COUNT {
-		c.error("Too many local variables in scope")
+		parser.error("Too many local variables in scope")
 		return
 	}
 
@@ -536,7 +541,7 @@ func (c *Compiler) emitOpAndArg(op OpCode, arg byte) {
 }
 
 func (c *Compiler) emitByte(item byte) {
-	c.currentChunk().Write(item, c.previous.line)
+	c.currentChunk().Write(item, parser.previous.line)
 }
 
 func (c *Compiler) emitBytes(item1 byte, item2 byte) {
@@ -555,7 +560,7 @@ func (c *Compiler) emitLoop(start int) {
 
 	offset := c.currentChunk().Count() - start + 2
 	if offset > math.MaxUint16 {
-		c.error("Loop body too large.")
+		parser.error("Loop body too large.")
 	}
 
 	c.emitByte(byte((offset >> 8) & 0xff))
@@ -567,7 +572,7 @@ func (c *Compiler) patchJump(offset int) {
 	jump := c.currentChunk().Count() - offset - 2
 
 	if jump > math.MaxUint16 {
-		c.error("Too much code to jump over")
+		parser.error("Too much code to jump over")
 	}
 
 	c.currentChunk().code[offset] = byte((jump >> 8) & 0xff)
@@ -585,7 +590,7 @@ func (c *Compiler) emitReturn() {
 func (c *Compiler) makeConstant(value Value) byte {
 	constant := c.currentChunk().AddConstant(value)
 	if constant > math.MaxUint8 {
-		c.error("Too many constants in one chunk")
+		parser.error("Too many constants in one chunk")
 		return 0
 	}
 
@@ -597,7 +602,7 @@ func (c *Compiler) end() *ValueFunction {
 
 	function := c.function
 
-	if DEBUG_PRINT_CODE && !c.hadError {
+	if DEBUG_PRINT_CODE && !parser.hadError {
 		name := function.name
 
 		if function.name == "" {
