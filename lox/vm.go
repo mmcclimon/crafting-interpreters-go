@@ -183,6 +183,10 @@ func (vm *VM) run() error {
 				vm.ip += offset
 			}
 
+		case OP_LOOP:
+			offset := vm.readShort()
+			vm.ip -= offset
+
 		case OP_RETURN:
 			return nil
 		}

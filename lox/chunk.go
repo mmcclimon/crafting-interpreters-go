@@ -33,6 +33,7 @@ const (
 	OP_JUMP
 	OP_JUMP_IF_FALSE
 	OP_JUMP_IF_TRUE
+	OP_LOOP
 	OP_RETURN
 )
 
@@ -59,6 +60,10 @@ func (c *Chunk) constantAt(offset byte) Value {
 
 func (c *Chunk) GetLine(offset int) int {
 	return c.lines.getForOffset(offset)
+}
+
+func (c *Chunk) Count() int {
+	return len(c.code)
 }
 
 // lines is a run-length encoded array like [line-num, max-offset, ...]
@@ -117,6 +122,7 @@ func init() {
 		OP_JUMP:          "OP_JUMP",
 		OP_JUMP_IF_FALSE: "OP_JUMP_IF_FALSE",
 		OP_JUMP_IF_TRUE:  "OP_JUMP_IF_TRUE",
+		OP_LOOP:          "OP_LOOP",
 		OP_RETURN:        "OP_RETURN",
 	}
 }
