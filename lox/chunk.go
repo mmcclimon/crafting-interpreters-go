@@ -34,6 +34,7 @@ const (
 	OP_JUMP_IF_FALSE
 	OP_JUMP_IF_TRUE
 	OP_LOOP
+	OP_CALL
 	OP_RETURN
 )
 
@@ -123,6 +124,7 @@ func init() {
 		OP_JUMP_IF_FALSE: "OP_JUMP_IF_FALSE",
 		OP_JUMP_IF_TRUE:  "OP_JUMP_IF_TRUE",
 		OP_LOOP:          "OP_LOOP",
+		OP_CALL:          "OP_CALL",
 		OP_RETURN:        "OP_RETURN",
 	}
 }
