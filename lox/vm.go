@@ -18,6 +18,7 @@ type CallFrame struct {
 	function *ValueFunction
 	ip       int
 	slots    []Value
+	sp       int
 }
 
 type VM struct {
@@ -42,11 +43,7 @@ func (vm *VM) InterpretString(source string) error {
 	}
 
 	vm.push(function)
-	vm.frameCount++
-	frame := vm.currentFrame()
-	frame.function = function
-	frame.ip = 0
-	frame.slots = vm.stack[0:]
+	vm.call(function, 0)
 
 	return vm.run()
 }
@@ -202,8 +199,26 @@ func (vm *VM) run() error {
 			offset := vm.readShort()
 			frame.ip -= offset
 
+		case OP_CALL:
+			argCount := int(vm.readByte())
+			if err := vm.callValue(vm.peek(argCount), argCount); err != nil {
+				return InterpretRuntimeError
+			}
+			frame = &vm.frames[vm.frameCount-1]
+
 		case OP_RETURN:
-			return nil
+			result := vm.pop()
+			vm.frameCount--
+			if vm.frameCount == 0 {
+				vm.pop()
+				return nil
+			}
+
+			// we need to subtract the stack height of the frame (??)
+			vm.sp -= vm.currentFrame().sp
+
+			vm.push(result)
+			frame = &vm.frames[vm.frameCount-1]
 		}
 	}
 }
@@ -234,9 +249,19 @@ func (vm *VM) RuntimeError(format string, args ...any) error {
 	fmt.Fprintf(os.Stderr, format, args...)
 	fmt.Fprintf(os.Stderr, "\n")
 
-	frame := vm.currentFrame()
-	line := frame.function.chunk.GetLine(frame.ip)
-	fmt.Fprintf(os.Stderr, "[line %d] in script\n", line)
+	for i := vm.frameCount - 1; i >= 0; i-- {
+		frame := &vm.frames[i]
+		function := frame.function
+
+		line := frame.function.chunk.GetLine(frame.ip)
+		fmt.Fprintf(os.Stderr, "[line %d] in ", line)
+
+		if function.name == "" {
+			fmt.Fprintf(os.Stderr, "script\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "%s()\n", function.name)
+		}
+	}
 
 	return InterpretRuntimeError
 }
@@ -245,15 +270,53 @@ func (vm *VM) RuntimeError(format string, args ...any) error {
 func (vm *VM) push(value Value) {
 	vm.stack[vm.sp] = value
 	vm.sp++
+
+	if vm.frameCount > 0 {
+		vm.currentFrame().sp++
+	}
 }
 
 func (vm *VM) pop() Value {
 	vm.sp--
+
+	if vm.frameCount > 0 {
+		vm.currentFrame().sp--
+	}
+
 	return vm.stack[vm.sp]
 }
 
 func (vm *VM) peek(dist int) Value {
 	return vm.stack[vm.sp-1-dist]
+}
+
+func (vm *VM) callValue(callee Value, argCount int) error {
+	switch callee.(type) {
+	case *ValueFunction:
+		function := callee.(*ValueFunction)
+		return vm.call(function, argCount)
+	default:
+		fmt.Fprintf(os.Stderr, "weird call type: %+v", callee)
+	}
+
+	return vm.RuntimeError("Can only call functions and classes")
+}
+
+func (vm *VM) call(function *ValueFunction, argCount int) error {
+	if argCount != function.arity {
+		return vm.RuntimeError("Expected %d arguments but got %d.", function.arity, argCount)
+	}
+
+	if vm.frameCount == FRAMES_MAX {
+		return vm.RuntimeError("Stack overflow.")
+	}
+
+	frame := &vm.frames[vm.frameCount]
+	vm.frameCount++
+	frame.function = function
+	frame.ip = 0
+	frame.slots = vm.stack[vm.sp-argCount-1:]
+	return nil
 }
 
 func (vm *VM) binaryOp(oper op.BinaryOp) error {

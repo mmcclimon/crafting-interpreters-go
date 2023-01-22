@@ -12,6 +12,7 @@ import (
 const UINT8_COUNT = math.MaxUint8 + 1
 
 type Compiler struct {
+	enclosing  *Compiler
 	function   *ValueFunction
 	kind       FunctionType
 	rules      map[TokenType]ParseRule
@@ -67,13 +68,18 @@ const (
 	TYPE_SCRIPT
 )
 
-func NewCompiler(kind FunctionType) *Compiler {
+func NewCompiler(kind FunctionType, parent *Compiler) *Compiler {
 	c := &Compiler{
-		function: NewFunction(),
-		kind:     kind,
+		enclosing: parent,
+		function:  NewFunction(),
+		kind:      kind,
 	}
 
 	c.initRules()
+
+	if kind != TYPE_SCRIPT {
+		c.function.name = parser.previous.lexeme
+	}
 
 	local := c.locals[c.localCount]
 	local.name.lexeme = ""
@@ -89,7 +95,7 @@ func Compile(source string) (*ValueFunction, error) {
 		panicMode: false,
 	}
 
-	c := NewCompiler(TYPE_SCRIPT)
+	c := NewCompiler(TYPE_SCRIPT, nil)
 
 	parser.advance()
 
@@ -108,7 +114,7 @@ func Compile(source string) (*ValueFunction, error) {
 
 func (c *Compiler) initRules() {
 	c.rules = map[TokenType]ParseRule{
-		TOKEN_LEFT_PAREN:    {c.grouping, nil, PREC_NONE},
+		TOKEN_LEFT_PAREN:    {c.grouping, c.call, PREC_CALL},
 		TOKEN_RIGHT_PAREN:   {nil, nil, PREC_NONE},
 		TOKEN_LEFT_BRACE:    {nil, nil, PREC_NONE},
 		TOKEN_RIGHT_BRACE:   {nil, nil, PREC_NONE},
@@ -152,7 +158,9 @@ func (c *Compiler) initRules() {
 }
 
 func (c *Compiler) declaration() {
-	if parser.match(TOKEN_VAR) {
+	if parser.match(TOKEN_FUN) {
+		c.funDeclaration()
+	} else if parser.match(TOKEN_VAR) {
 		c.varDeclaration()
 	} else {
 		c.statement()
@@ -161,6 +169,13 @@ func (c *Compiler) declaration() {
 	if parser.panicMode {
 		parser.synchronize()
 	}
+}
+
+func (c *Compiler) funDeclaration() {
+	global := c.parseVariable("Expect function name.")
+	c.markInitialized()
+	c.compileFunction(TYPE_FUNCTION)
+	c.defineVariable(global)
 }
 
 func (c *Compiler) varDeclaration() {
@@ -184,6 +199,8 @@ func (c *Compiler) statement() {
 		c.forStatement()
 	} else if parser.match(TOKEN_IF) {
 		c.ifStatement()
+	} else if parser.match(TOKEN_RETURN) {
+		c.returnStatement()
 	} else if parser.match(TOKEN_WHILE) {
 		c.whileStatement()
 	} else if parser.match(TOKEN_LEFT_BRACE) {
@@ -199,6 +216,20 @@ func (c *Compiler) printStatement() {
 	c.expression()
 	parser.consume(TOKEN_SEMICOLON, "Expect ';' after value")
 	c.emitOp(OP_PRINT)
+}
+
+func (c *Compiler) returnStatement() {
+	if c.kind == TYPE_SCRIPT {
+		parser.error("Can't return from top-level code.")
+	}
+
+	if parser.match(TOKEN_SEMICOLON) {
+		c.emitReturn()
+	} else {
+		c.expression()
+		parser.consume(TOKEN_SEMICOLON, "Expect ';' after return value")
+		c.emitOp(OP_RETURN)
+	}
 }
 
 func (c *Compiler) expressionStatement() {
@@ -302,6 +333,36 @@ func (c *Compiler) block() {
 	}
 
 	parser.consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.")
+}
+
+func (c *Compiler) compileFunction(kind FunctionType) {
+	local := NewCompiler(kind, c)
+	local.beginScope()
+
+	parser.consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.")
+
+	if !parser.check(TOKEN_RIGHT_PAREN) {
+		for {
+			local.function.arity++
+			if local.function.arity > 255 {
+				parser.errorAtCurrent("Can't have more than 255 parameters, you animal.")
+			}
+
+			constant := local.parseVariable("Expect parameter name.")
+			local.defineVariable(constant)
+
+			if !parser.match(TOKEN_COMMA) {
+				break
+			}
+		}
+	}
+
+	parser.consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.")
+	parser.consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.")
+	local.block()
+
+	function := local.end()
+	c.emitOpAndArg(OP_CONSTANT, c.makeConstant(function))
 }
 
 func (c *Compiler) number(_ bool) {
@@ -411,6 +472,11 @@ func (c *Compiler) binary(_ bool) {
 	}
 }
 
+func (c *Compiler) call(bool) {
+	argCount := c.argumentList()
+	c.emitOpAndArg(OP_CALL, argCount)
+}
+
 func (c *Compiler) literal(_ bool) {
 	switch parser.previous.kind {
 	case TOKEN_FALSE:
@@ -476,6 +542,10 @@ func (c *Compiler) parseVariable(errMsg string) byte {
 }
 
 func (c *Compiler) markInitialized() {
+	if c.scopeDepth == 0 {
+		return
+	}
+
 	c.locals[c.localCount-1].depth = c.scopeDepth
 }
 
@@ -486,6 +556,28 @@ func (c *Compiler) defineVariable(global byte) {
 	}
 
 	c.emitOpAndArg(OP_DEFINE_GLOBAL, global)
+}
+
+func (c *Compiler) argumentList() byte {
+	argCount := 0
+
+	if !parser.check(TOKEN_RIGHT_PAREN) {
+		for {
+			c.expression()
+			argCount++
+
+			if argCount == 255 {
+				parser.error("Can't have more than 255 arguments.")
+			}
+
+			if !parser.match(TOKEN_COMMA) {
+				break
+			}
+		}
+	}
+
+	parser.consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments")
+	return byte(argCount)
 }
 
 func (c *Compiler) identifierConstant(name Token) byte {
@@ -584,6 +676,7 @@ func (c *Compiler) emitConstant(value Value) {
 }
 
 func (c *Compiler) emitReturn() {
+	c.emitOp(OP_NIL)
 	c.emitOp(OP_RETURN)
 }
 
