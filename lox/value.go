@@ -37,6 +37,8 @@ func PrintValue(v Value) {
 			name = "<script>"
 		}
 		fmt.Printf("<fn %s>", name)
+	default:
+		fmt.Printf("wat? %T", v)
 	}
 }
 
