@@ -219,7 +219,7 @@ func (vm *VM) run() error {
 			if err := vm.callValue(vm.peek(argCount), argCount); err != nil {
 				return InterpretRuntimeError
 			}
-			frame = &vm.frames[vm.frameCount-1]
+			frame = vm.currentFrame()
 
 		case OP_RETURN:
 			result := vm.pop()
@@ -234,7 +234,7 @@ func (vm *VM) run() error {
 			vm.sp = spRestore
 
 			vm.push(result)
-			frame = &vm.frames[vm.frameCount-1]
+			frame = vm.currentFrame()
 		}
 	}
 }
