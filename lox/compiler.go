@@ -88,7 +88,7 @@ func NewCompiler(kind FunctionType, parent *Compiler) *Compiler {
 	return c
 }
 
-func Compile(source string) (*ValueFunction, error) {
+func Compile(source string) (ValueFunction, error) {
 	parser = Parser{
 		scanner:   NewScanner(source),
 		hadError:  false,
@@ -106,7 +106,7 @@ func Compile(source string) (*ValueFunction, error) {
 	function := c.end()
 
 	if parser.hadError {
-		return nil, errors.New("compilation error")
+		return ValueFunction{}, errors.New("compilation error")
 	}
 
 	return function, nil
@@ -690,10 +690,10 @@ func (c *Compiler) makeConstant(value Value) byte {
 	return byte(constant)
 }
 
-func (c *Compiler) end() *ValueFunction {
+func (c *Compiler) end() ValueFunction {
 	c.emitReturn()
 
-	function := c.function
+	function := *c.function
 
 	if DEBUG_PRINT_CODE && !parser.hadError {
 		name := function.name
@@ -705,7 +705,7 @@ func (c *Compiler) end() *ValueFunction {
 		c.currentChunk().Disassemble(name)
 	}
 
-	return c.function
+	return function
 }
 
 func (c *Compiler) beginScope() {

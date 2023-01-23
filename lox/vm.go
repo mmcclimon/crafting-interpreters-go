@@ -43,7 +43,7 @@ func (vm *VM) InterpretString(source string) error {
 	}
 
 	vm.push(function)
-	vm.call(function, 0)
+	vm.call(&function, 0)
 
 	return vm.run()
 }
@@ -292,9 +292,9 @@ func (vm *VM) peek(dist int) Value {
 
 func (vm *VM) callValue(callee Value, argCount int) error {
 	switch callee.(type) {
-	case *ValueFunction:
-		function := callee.(*ValueFunction)
-		return vm.call(function, argCount)
+	case ValueFunction:
+		function := callee.(ValueFunction)
+		return vm.call(&function, argCount)
 	default:
 		fmt.Fprintf(os.Stderr, "weird call type: %+v", callee)
 	}
