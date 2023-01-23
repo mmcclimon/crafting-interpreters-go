@@ -18,7 +18,7 @@ type CallFrame struct {
 	function *ValueFunction
 	ip       int
 	slots    []Value
-	sp       int
+	sp       int // this is the stack pointer where we _start_
 }
 
 type VM struct {
@@ -46,6 +46,11 @@ func (vm *VM) InterpretString(source string) error {
 	vm.call(&function, 0)
 
 	return vm.run()
+}
+
+func (vm *VM) resetStack() {
+	vm.frameCount = 0
+	vm.sp = 0
 }
 
 /*
@@ -208,14 +213,15 @@ func (vm *VM) run() error {
 
 		case OP_RETURN:
 			result := vm.pop()
+			spRestore := vm.currentFrame().sp
 			vm.frameCount--
 			if vm.frameCount == 0 {
 				vm.pop()
+
 				return nil
 			}
 
-			// we need to subtract the stack height of the frame (??)
-			vm.sp -= vm.currentFrame().sp
+			vm.sp = spRestore
 
 			vm.push(result)
 			frame = &vm.frames[vm.frameCount-1]
@@ -263,6 +269,8 @@ func (vm *VM) RuntimeError(format string, args ...any) error {
 		}
 	}
 
+	vm.resetStack()
+
 	return InterpretRuntimeError
 }
 
@@ -270,19 +278,10 @@ func (vm *VM) RuntimeError(format string, args ...any) error {
 func (vm *VM) push(value Value) {
 	vm.stack[vm.sp] = value
 	vm.sp++
-
-	if vm.frameCount > 0 {
-		vm.currentFrame().sp++
-	}
 }
 
 func (vm *VM) pop() Value {
 	vm.sp--
-
-	if vm.frameCount > 0 {
-		vm.currentFrame().sp--
-	}
-
 	return vm.stack[vm.sp]
 }
 
@@ -313,9 +312,11 @@ func (vm *VM) call(function *ValueFunction, argCount int) error {
 
 	frame := &vm.frames[vm.frameCount]
 	vm.frameCount++
+
 	frame.function = function
 	frame.ip = 0
 	frame.slots = vm.stack[vm.sp-argCount-1:]
+	frame.sp = vm.sp - argCount - 1
 	return nil
 }
 
