@@ -19,6 +19,12 @@ type ValueFunction struct {
 	name  string
 }
 
+type NativeFn func(argCount int, args []Value) Value
+
+type ValueNative struct {
+	function NativeFn
+}
+
 func PrintValue(v Value) {
 	switch v.(type) {
 	case ValueBool:
@@ -37,6 +43,8 @@ func PrintValue(v Value) {
 			name = "<script>"
 		}
 		fmt.Printf("<fn %s>", name)
+	case ValueNative:
+		fmt.Printf("<native fn>")
 	default:
 		fmt.Printf("wat? %T", v)
 	}
@@ -90,5 +98,9 @@ func (v ValueString) Equals(other Value) bool {
 }
 
 func (v ValueFunction) Equals(other Value) bool {
+	return false
+}
+
+func (v ValueNative) Equals(other Value) bool {
 	return false
 }

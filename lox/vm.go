@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/mmcclimon/glox/lox/op"
 )
@@ -13,6 +14,7 @@ const STACK_MAX = FRAMES_MAX * UINT8_COUNT
 
 var InterpretCompileError = errors.New("compile error")
 var InterpretRuntimeError = errors.New("runtime error")
+var vmStartTime int64
 
 type CallFrame struct {
 	function *ValueFunction
@@ -29,10 +31,18 @@ type VM struct {
 	globals    map[string]Value
 }
 
+func init() {
+	vmStartTime = time.Now().Unix()
+}
+
 func NewVM() *VM {
-	return &VM{
+	vm := VM{
 		globals: make(map[string]Value),
 	}
+
+	vm.defineNative("clock", clockNative)
+
+	return &vm
 }
 
 func (vm *VM) InterpretString(source string) error {
@@ -294,6 +304,13 @@ func (vm *VM) callValue(callee Value, argCount int) error {
 	case ValueFunction:
 		function := callee.(ValueFunction)
 		return vm.call(&function, argCount)
+	case ValueNative:
+		function := callee.(ValueNative).function
+		args := vm.stack[vm.sp-argCount : vm.sp]
+		result := function(argCount, args)
+		vm.sp -= argCount + 1
+		vm.push(result)
+		return nil
 	default:
 		fmt.Fprintf(os.Stderr, "weird call type: %+v", callee)
 	}
@@ -355,4 +372,12 @@ func (vm *VM) concatenate() {
 	b := vm.pop().(ValueString)
 	a := vm.pop().(ValueString)
 	vm.push(ValueString(a + b))
+}
+
+func (vm *VM) defineNative(name string, function NativeFn) {
+	vm.globals[name] = ValueNative{function}
+}
+
+func clockNative(int, []Value) Value {
+	return ValueNumber(time.Now().Unix() - vmStartTime)
 }
