@@ -17,10 +17,10 @@ var InterpretRuntimeError = errors.New("runtime error")
 var vmStartTime int64
 
 type CallFrame struct {
-	function *ValueFunction
-	ip       int
-	slots    []Value
-	sp       int // this is the stack pointer where we _start_
+	closure *ValueClosure
+	ip      int
+	slots   []Value
+	sp      int // this is the stack pointer where we _start_
 }
 
 type VM struct {
@@ -53,7 +53,10 @@ func (vm *VM) InterpretString(source string) error {
 	}
 
 	vm.push(function)
-	vm.call(&function, 0)
+	closure := ValueClosure{function}
+	vm.pop()
+	vm.push(closure)
+	vm.call(&closure, 0)
 
 	return vm.run()
 }
@@ -76,7 +79,7 @@ func (vm *VM) run() error {
 
 	for {
 		if DEBUG_TRACE_EXECUTION {
-			frame.function.chunk.DisassembleInstruction(frame.ip)
+			frame.closure.function.chunk.DisassembleInstruction(frame.ip)
 			fmt.Printf("          ")
 			for i := 0; i < vm.sp; i++ {
 				fmt.Printf("[ ")
@@ -221,6 +224,11 @@ func (vm *VM) run() error {
 			}
 			frame = vm.currentFrame()
 
+		case OP_CLOSURE:
+			function := vm.readConstant().(ValueFunction)
+			closure := ValueClosure{function}
+			vm.push(closure)
+
 		case OP_RETURN:
 			result := vm.pop()
 			spRestore := vm.currentFrame().sp
@@ -246,18 +254,18 @@ func (vm *VM) currentFrame() *CallFrame {
 func (vm *VM) readByte() byte {
 	frame := vm.currentFrame()
 	frame.ip++
-	return frame.function.chunk.code[frame.ip-1]
+	return frame.closure.function.chunk.code[frame.ip-1]
 }
 
 func (vm *VM) readConstant() Value {
 	frame := vm.currentFrame()
-	return frame.function.chunk.constantAt(vm.readByte())
+	return frame.closure.function.chunk.constantAt(vm.readByte())
 }
 
 func (vm *VM) readShort() int {
 	frame := vm.currentFrame()
 	frame.ip += 2
-	code := frame.function.chunk.code
+	code := frame.closure.function.chunk.code
 	return int(code[frame.ip-2]<<8 | code[frame.ip-1])
 }
 
@@ -267,9 +275,9 @@ func (vm *VM) RuntimeError(format string, args ...any) error {
 
 	for i := vm.frameCount - 1; i >= 0; i-- {
 		frame := &vm.frames[i]
-		function := frame.function
+		function := frame.closure.function
 
-		line := frame.function.chunk.GetLine(frame.ip)
+		line := function.chunk.GetLine(frame.ip)
 		fmt.Fprintf(os.Stderr, "[line %d] in ", line)
 
 		if function.name == "" {
@@ -301,8 +309,8 @@ func (vm *VM) peek(dist int) Value {
 
 func (vm *VM) callValue(callee Value, argCount int) error {
 	switch callee.(type) {
-	case ValueFunction:
-		function := callee.(ValueFunction)
+	case ValueClosure:
+		function := callee.(ValueClosure)
 		return vm.call(&function, argCount)
 	case ValueNative:
 		function := callee.(ValueNative).function
@@ -318,9 +326,9 @@ func (vm *VM) callValue(callee Value, argCount int) error {
 	return vm.RuntimeError("Can only call functions and classes")
 }
 
-func (vm *VM) call(function *ValueFunction, argCount int) error {
-	if argCount != function.arity {
-		return vm.RuntimeError("Expected %d arguments but got %d.", function.arity, argCount)
+func (vm *VM) call(closure *ValueClosure, argCount int) error {
+	if argCount != closure.function.arity {
+		return vm.RuntimeError("Expected %d arguments but got %d.", closure.function.arity, argCount)
 	}
 
 	if vm.frameCount == FRAMES_MAX {
@@ -330,7 +338,7 @@ func (vm *VM) call(function *ValueFunction, argCount int) error {
 	frame := &vm.frames[vm.frameCount]
 	vm.frameCount++
 
-	frame.function = function
+	frame.closure = closure
 	frame.ip = 0
 	frame.slots = vm.stack[vm.sp-argCount-1:]
 	frame.sp = vm.sp - argCount - 1

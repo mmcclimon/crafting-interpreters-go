@@ -14,9 +14,14 @@ type ValueNumber float64
 type ValueString string
 
 type ValueFunction struct {
-	arity int
-	chunk *Chunk
-	name  string
+	arity        int
+	upvalueCount int
+	chunk        *Chunk
+	name         string
+}
+
+type ValueClosure struct {
+	function ValueFunction
 }
 
 type NativeFn func(argCount int, args []Value) Value
@@ -43,6 +48,8 @@ func PrintValue(v Value) {
 			name = "<script>"
 		}
 		fmt.Printf("<fn %s>", name)
+	case ValueClosure:
+		PrintValue(v.(ValueClosure).function)
 	case ValueNative:
 		fmt.Printf("<native fn>")
 	default:
@@ -102,5 +109,9 @@ func (v ValueFunction) Equals(other Value) bool {
 }
 
 func (v ValueNative) Equals(other Value) bool {
+	return false
+}
+
+func (v ValueClosure) Equals(other Value) bool {
 	return false
 }

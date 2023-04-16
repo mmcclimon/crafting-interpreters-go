@@ -19,11 +19,17 @@ type Compiler struct {
 	localCount int
 	scopeDepth int
 	locals     [UINT8_COUNT]Local
+	upvalues   [UINT8_COUNT]Upvalue
 }
 
 type Local struct {
 	name  Token
 	depth int
+}
+
+type Upvalue struct {
+	index   byte
+	isLocal bool
 }
 
 // this is a global, basically, set up when we call Compile()
@@ -362,7 +368,17 @@ func (c *Compiler) compileFunction(kind FunctionType) {
 	local.block()
 
 	function := local.end()
-	c.emitOpAndArg(OP_CONSTANT, c.makeConstant(function))
+	c.emitOpAndArg(OP_CLOSURE, c.makeConstant(function))
+
+	for i := 0; i < function.upvalueCount; i++ {
+		isLocalByte := 0
+		if c.upvalues[i].isLocal {
+			isLocalByte = 1
+		}
+
+		c.emitByte(byte(isLocalByte))
+		c.emitByte(c.upvalues[i].index)
+	}
 }
 
 func (c *Compiler) number(_ bool) {
@@ -390,6 +406,9 @@ func (c *Compiler) namedVariable(name Token, canAssign bool) {
 	if err == nil {
 		getOp = OP_GET_LOCAL
 		setOp = OP_SET_LOCAL
+	} else if arg, err = c.resolveUpvalue(name); err != nil {
+		getOp = OP_GET_UPVALUE
+		setOp = OP_SET_UPVALUE
 	} else {
 		arg = c.identifierConstant(name)
 		getOp = OP_GET_GLOBAL
@@ -417,6 +436,46 @@ func (c *Compiler) resolveLocal(name Token) (byte, error) {
 	}
 
 	return 0, errors.New("local var not found")
+}
+
+func (c *Compiler) resolveUpvalue(name Token) (byte, error) {
+	if c.enclosing == nil {
+		return 0, errors.New("upvalue not found")
+	}
+
+	if local, err := c.enclosing.resolveLocal(name); err != nil {
+		return c.addUpvalue(local, true)
+	}
+
+	upvalue, err := c.enclosing.resolveUpvalue(name)
+	if err != nil {
+		return c.addUpvalue(upvalue, false)
+	}
+
+	return 0, errors.New("upvalue not found")
+}
+
+func (c *Compiler) addUpvalue(index byte, isLocal bool) (byte, error) {
+	upvalueCount := c.function.upvalueCount
+
+	for i := 0; i < upvalueCount; i++ {
+		upvalue := c.upvalues[i]
+		if upvalue.index == index && upvalue.isLocal == isLocal {
+			return byte(i), nil
+		}
+	}
+
+	if upvalueCount == UINT8_COUNT {
+		parser.error("Too many closure variables in function.")
+		return 0, errors.New("Too many closure variables in function.")
+
+	}
+
+	c.upvalues[upvalueCount].isLocal = isLocal
+	c.upvalues[upvalueCount].index = index
+	upvalueCount++
+
+	return byte(upvalueCount - 1), nil
 }
 
 func (c *Compiler) grouping(_ bool) {

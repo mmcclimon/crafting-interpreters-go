@@ -35,7 +35,7 @@ func (c *Chunk) DisassembleInstruction(offset int) int {
 	case OP_CONSTANT, OP_DEFINE_GLOBAL, OP_SET_GLOBAL, OP_GET_GLOBAL:
 		return constantInstruction(s, c, offset)
 
-	case OP_GET_LOCAL, OP_SET_LOCAL, OP_CALL:
+	case OP_GET_LOCAL, OP_SET_LOCAL, OP_GET_UPVALUE, OP_SET_UPVALUE, OP_CALL:
 		return byteInstruction(s, c, offset)
 
 	case OP_JUMP, OP_JUMP_IF_FALSE, OP_JUMP_IF_TRUE:
@@ -43,6 +43,31 @@ func (c *Chunk) DisassembleInstruction(offset int) int {
 
 	case OP_LOOP:
 		return jumpInstruction(s, -1, c, offset)
+
+	case OP_CLOSURE:
+		constant := c.code[offset+1]
+		fmt.Printf("%-16s %4d ", s, constant)
+		function := c.constantAt(constant).(ValueFunction)
+		PrintValue(function)
+		fmt.Printf("\n")
+
+		offset += 2
+
+		for i := 0; i < function.upvalueCount; i++ {
+			isLocal := c.code[offset] == 1
+			index := c.code[offset+1]
+			offset += 2
+
+			kind := "local"
+			if !isLocal {
+				kind = "upvalue"
+			}
+
+			fmt.Printf("%04d      |                     %s %d\n",
+				offset-2, kind, index)
+		}
+
+		return offset
 
 	default:
 		return simpleInstruction(s, offset)
